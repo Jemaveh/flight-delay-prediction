@@ -30,7 +30,7 @@
 - **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker-compose`, orchestrant :
   1. Un service **pipeline** (batch) exécutant l'ingestion + transformation + chargement en base à intervalle régulier.
   2. Un service **API** (FastAPI, `src/api/`) exposant un endpoint `/predict` qui consomme le modèle sauvegardé (`joblib`) pour retourner une prédiction de retard à la demande.
-  3. Un service **base de données** (DuckDB en fichier monté en volume, ou PostgreSQL conteneurisé si migration effectuée).
+  3. Un service **base de données** (PostgreSQL conteneurisé, avec volume de données persistant).
 - **Bonnes pratiques DevOps appliquées** :
   - Images Docker basées sur des tags de version explicites (pas de `latest`) pour la reproductibilité.
   - Fichier `.dockerignore` pour éviter d'embarquer les secrets/données dans l'image.
@@ -69,7 +69,7 @@
 
 ## 6. Suite du projet
 
-- **Scalabilité / intégration en production** : [À COMPLÉTER — ex : migration DuckDB → PostgreSQL/Data Warehouse cloud, orchestration via Airflow plutôt que cron]
+- **Scalabilité / intégration en production** : [À COMPLÉTER — ex : migration vers un entrepôt de données cloud managé (BigQuery, Snowflake) ou une instance PostgreSQL partitionnée, orchestration via Airflow plutôt que cron]
 - **Axes d'amélioration envisagés** : [À COMPLÉTER — nouvelles sources de données, automatisation complète, visualisation temps réel]
 - **Contribution du projet à une meilleure exploitation de la donnée** : [À COMPLÉTER PAR TOI]
 
@@ -83,7 +83,7 @@
 
 ## 8. Annexes
 
-- **Schéma d'architecture technique global** : [À COMPLÉTER — diagramme incluant : sources API → ingestion → DuckDB (schéma en étoile) → feature engineering → modèle LightGBM → API FastAPI → conteneurs Docker]
+- **Schéma d'architecture technique global** : [À COMPLÉTER — diagramme incluant : sources API → ingestion → PostgreSQL (schéma en étoile) → feature engineering → modèle LightGBM → API FastAPI → conteneurs Docker]
 - **Endpoints des API développées ou consommées** :
   - *Développées* : voir §3.1 ci-dessus.
   - *Consommées* : OpenSky Network (`/states/all`), OpenWeather (`/data/2.5/weather`), NewsAPI (`/v2/everything`).

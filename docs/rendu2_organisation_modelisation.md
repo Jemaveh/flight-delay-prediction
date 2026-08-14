@@ -10,13 +10,16 @@
 
 ### 1.1 Base de données choisie
 
-**DuckDB** (base de données analytique embarquée, sans serveur).
+**PostgreSQL** (système de gestion de base de données relationnel, client-serveur).
 
-**Pourquoi DuckDB plutôt que PostgreSQL ou MongoDB ?**
-- Le projet manipule des données majoritairement **analytiques** (agrégations, jointures entre 3 sources, requêtes de type OLAP) plutôt que des transactions unitaires fréquentes (OLTP) → DuckDB est optimisé pour ce cas d'usage (moteur colonne).
-- **Zéro administration serveur** : pas de conteneur BDD séparé à maintenir en développement, ce qui convient à un projet mené en autonomie (on garde tout de même la possibilité de migrer vers PostgreSQL en Phase 4/Docker si besoin de multi-accès concurrent).
-- DuckDB lit/écrit directement des fichiers Parquet/CSV, ce qui simplifie l'intégration avec le pipeline Python (pandas) déjà en place pour l'ingestion.
+**Pourquoi PostgreSQL plutôt qu'une base embarquée ou une base NoSQL ?**
+- **SGBD relationnel client-serveur mature et largement utilisé en entreprise** : PostgreSQL est un standard de l'industrie, avec un écosystème riche (extensions, outils d'administration, pilotes disponibles dans tous les langages), ce qui en fait un choix directement transférable à un contexte professionnel.
+- **Gestion native de la concurrence d'accès** : contrairement à une base embarquée, PostgreSQL gère nativement plusieurs connexions simultanées en lecture et en écriture, ce qui correspond à un usage réaliste où le pipeline d'ingestion, l'API de prédiction et d'éventuels outils d'analyse accèdent à la base en parallèle.
+- **Intégration naturelle avec un environnement conteneurisé** : une image Docker officielle est disponible, ce qui prépare directement la conteneurisation prévue en Phase 4 (le service de base de données rejoint les autres services du `docker-compose` dès la Phase 2, plutôt que d'être ajouté après coup).
+- **Compatibilité avec SQLAlchemy** : l'utilisation d'un toolkit SQL standard (SQLAlchemy) au-dessus de PostgreSQL facilite l'écriture de requêtes portables et la maintenance du code d'accès aux données.
 - MongoDB (NoSQL document) a été écarté : nos données sont structurées et relationnelles par nature (un vol a une météo et un contexte d'actualité associés à une date/aéroport) — un modèle relationnel est plus adapté qu'un stockage document flexible dont on n'a pas l'usage ici.
+
+Une base de données analytique embarquée (de type DuckDB) aurait également constitué un choix technique valide pour le volume de données de ce projet, notamment pour sa simplicité de mise en œuvre sans serveur dédié. PostgreSQL a été retenu à la place afin de démontrer une compétence de gestion de base de données client-serveur complète (connexion réseau, gestion de la concurrence, conteneurisation), plus représentative des architectures rencontrées en environnement de production.
 
 ### 1.2 Choix d'architecture : Schéma en étoile (Star Schema)
 
@@ -82,7 +85,7 @@ Nous choisissons une approche **ETL code-based en Python** (par opposition à un
 **Logique du pipeline** :
 1. **Extract** (`src/ingestion/`) : appel des 3 APIs, sauvegarde brute horodatée dans `data/raw/` (traçabilité et possibilité de rejouer les transformations sans réinterroger les APIs).
 2. **Transform** (`src/processing/`) : nettoyage, normalisation, calcul du score de sentiment BERT, calcul de la variable cible (retard).
-3. **Load** (`src/database/`) : écriture dans le schéma en étoile DuckDB.
+3. **Load** (`src/database/`) : écriture dans le schéma en étoile PostgreSQL.
 
 ### 2.2 Outils, frameworks et technologies utilisés
 
@@ -93,7 +96,8 @@ Nous choisissons une approche **ETL code-based en Python** (par opposition à un
 | HTTP | requests | Simplicité, standard de facto |
 | Data | pandas | Manipulation tabulaire |
 | NLP | transformers (HuggingFace) | Accès simple à des modèles BERT pré-entraînés |
-| BDD | DuckDB | Voir §1.1 |
+| BDD | PostgreSQL | Voir §1.1 |
+| Accès BDD | SQLAlchemy, psycopg2-binary | Toolkit SQL et pilote de connexion PostgreSQL pour Python |
 | Profiling | ydata-profiling | Rapport de qualité automatisé (Rendu 1) |
 | Tests | pytest | Standard Python, intégration CI/CD simple (Phase 4) |
 
@@ -103,7 +107,7 @@ Nous choisissons une approche **ETL code-based en Python** (par opposition à un
 
 - **Optimisations de performance** :
   - **Format Parquet** (colonnes compressées) pour les données intermédiaires plutôt que CSV → lecture plus rapide, typage préservé.
-  - **Indexation** DuckDB sur les clés de jointure (`airport_id`, `date_id`) pour accélérer les jointures entre `fact_flights` et les dimensions.
+  - **Indexation** PostgreSQL sur les clés de jointure (`airport_id`, `date_id`) pour accélérer les jointures entre `fact_flights` et les dimensions.
   - [À COMPLÉTER PAR TOI une fois mesuré — temps d'exécution avant/après optimisation, taille des fichiers]
 - **Qualité et cohérence des données** :
   - **Validation de schéma** via Pydantic à l'entrée de chaque pipeline (rejet/log des enregistrements non conformes plutôt que crash silencieux).
@@ -111,7 +115,7 @@ Nous choisissons une approche **ETL code-based en Python** (par opposition à un
   - **Logs structurés** (`src/utils/logger.py`) à chaque étape du pipeline (nombre d'enregistrements traités, erreurs rencontrées, durée d'exécution).
 - **Mécanismes de mise à jour incrémentale** :
   - Chaque ingestion enregistre un **timestamp de dernière extraction** (fichier de métadonnées ou table `ingestion_log` en base).
-  - Les nouvelles extractions ne récupèrent que les données postérieures à ce timestamp (évite de retraiter l'historique complet à chaque exécution) et utilisent une logique d'**upsert** (`INSERT ... ON CONFLICT`) dans DuckDB pour éviter les doublons.
+  - Les nouvelles extractions ne récupèrent que les données postérieures à ce timestamp (évite de retraiter l'historique complet à chaque exécution) et utilisent une logique d'**upsert** (`INSERT ... ON CONFLICT`) dans PostgreSQL pour éviter les doublons.
 
 ---
 
