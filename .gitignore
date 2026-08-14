@@ -1,0 +1,45 @@
+# === Secrets & environnement ===
+.env
+
+# === Documents personnels (jamais partagés, jamais versionnés) ===
+docs/journal_de_bord.md
+docs/plan_action_14_jours.md
+docs/notes_personnelles_jury.md
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# === Données volumineuses (on ne versionne pas les données brutes) ===
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# === Rapports générés (trop volumineux pour Git) ===
+data/profiling_reports/*.html
+!data/profiling_reports/.gitkeep
+
+# === Modèles entraînés (Phase 3) ===
+*.joblib
+*.pkl
+
+# === Notebooks : checkpoints Jupyter ===
+.ipynb_checkpoints/
+
+# === IDE ===
+.vscode/
+.idea/
+
+# === Logs ===
+logs/
+*.log
+
+# === OS ===
+.DS_Store
+Thumbs.db
