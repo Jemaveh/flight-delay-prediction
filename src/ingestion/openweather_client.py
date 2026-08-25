@@ -1,0 +1,316 @@
+"""
+Module d'ingestion pour l'API OpenWeather (Current Weather Data).
+
+Ligne de raisonnement
+----------------------
+OpenWeather expose une API REST publique qui retourne, pour un point
+géographique donné (latitude/longitude), les conditions météorologiques
+actuelles (température, vent, pluie, visibilité, pression...). Contrairement
+à OpenSky, qui interroge une zone géographique (bounding box) en un seul
+appel, OpenWeather fonctionne par point : il faut donc effectuer un appel par
+lieu que l'on souhaite documenter.
+
+Pour ce projet, on s'intéresse à la météo au niveau des principaux hubs
+aériens européens plutôt qu'à une zone géographique continue : la météo
+pertinente pour la prédiction de retard est celle des aéroports de
+départ/arrivée, pas celle d'un point quelconque entre deux aéroports. On
+définit donc une liste fixe de hubs (constante HUBS_AEROPORTUAIRES), et le
+module boucle sur cette liste pour construire un jeu de données multi-
+aéroports en plusieurs appels API.
+
+Comme pour OpenSky, on implémente ici un appel HTTP direct via la librairie
+`requests` plutôt que d'utiliser une librairie tierce dédiée à
+OpenWeather : l'API REST est simple (un seul endpoint utile pour ce projet,
+des paramètres de requête basiques), et un appel direct rend explicite et
+contrôlable chaque aspect de la requête (timeout, gestion des erreurs,
+authentification par clé API), sans dépendre d'une librairie externe
+supplémentaire à maintenir.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+import requests
+
+from config.settings import settings
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+URL_BASE_OPENWEATHER = "https://api.openweathermap.org/data/2.5/weather"
+TIMEOUT_SECONDES = 10
+
+# Unités "metric" : température en degrés Celsius et vitesse du vent en
+# mètres par seconde, plus lisibles pour l'exploration que les unités par
+# défaut de l'API (Kelvin et miles par heure).
+UNITES = "metric"
+LANGUE = "fr"
+
+
+@dataclass(frozen=True)
+class HubAeroportuaire:
+    """
+    Représente un aéroport hub pour lequel on récupère la météo actuelle.
+
+    Attributes
+    ----------
+    nom : str
+        Nom usuel de l'aéroport.
+    code_iata : str
+        Code IATA à trois lettres de l'aéroport.
+    latitude : float
+        Latitude du point de mesure météo.
+    longitude : float
+        Longitude du point de mesure météo.
+    """
+
+    nom: str
+    code_iata: str
+    latitude: float
+    longitude: float
+
+
+# Liste fixe des hubs aéroportuaires européens couverts par le projet. Une
+# liste codée en dur, plutôt qu'une zone géographique comme pour OpenSky, est
+# cohérente avec le fonctionnement par point de l'API OpenWeather : on ne
+# cherche pas à couvrir toute l'Europe météorologiquement, seulement les
+# aéroports qui interviennent réellement comme origine ou destination dans
+# les données de vols.
+HUBS_AEROPORTUAIRES: tuple[HubAeroportuaire, ...] = (
+    HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
+    HubAeroportuaire("Londres Heathrow", "LHR", 51.4700, -0.4543),
+    HubAeroportuaire("Francfort", "FRA", 50.0379, 8.5622),
+    HubAeroportuaire("Amsterdam Schiphol", "AMS", 52.3086, 4.7639),
+    HubAeroportuaire("Madrid Barajas", "MAD", 40.4983, -3.5676),
+    HubAeroportuaire("Rome Fiumicino", "FCO", 41.8003, 12.2389),
+    HubAeroportuaire("Istanbul", "IST", 41.2753, 28.7519),
+    HubAeroportuaire("Dublin", "DUB", 53.4213, -6.2701),
+    HubAeroportuaire("Munich", "MUC", 48.3538, 11.7861),
+    HubAeroportuaire("Barcelone", "BCN", 41.2974, 2.0833),
+)
+
+
+class ErreurAPIOpenWeather(Exception):
+    """
+    Exception levée lorsque l'appel à l'API OpenWeather échoue.
+
+    Utiliser une exception dédiée plutôt que de laisser remonter les
+    exceptions brutes de `requests` permet aux modules appelants (pipeline
+    d'ingestion, orchestrateur) d'attraper une seule et même famille
+    d'erreurs, sans avoir à connaître le détail des exceptions internes de la
+    librairie HTTP utilisée.
+    """
+
+
+class OpenWeatherClient:
+    """
+    Module permettant d'interroger l'API OpenWeather et de sauvegarder les
+    données brutes récupérées.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialise le module d'ingestion : prépare l'URL de base de l'API et
+        la clé d'authentification lue depuis la configuration.
+        """
+        self._logger = get_logger(__name__)
+        self._url_base = URL_BASE_OPENWEATHER
+        self._cle_api = settings.openweather_api_key
+
+    def recuperer_meteo_actuelle(self, latitude: float, longitude: float) -> dict:
+        """
+        Interroge l'API OpenWeather pour un point géographique donné.
+
+        Parameters
+        ----------
+        latitude : float
+            Latitude du point de mesure.
+        longitude : float
+            Longitude du point de mesure.
+
+        Returns
+        -------
+        dict
+            Le contenu JSON de la réponse, tel que retourné par l'API.
+
+        Raises
+        ------
+        ErreurAPIOpenWeather
+            Si la requête échoue (timeout, erreur de connexion, ou code HTTP
+            d'erreur retourné par l'API).
+        """
+        parametres = {
+            "lat": latitude,
+            "lon": longitude,
+            "appid": self._cle_api,
+            "units": UNITES,
+            "lang": LANGUE,
+        }
+
+        try:
+            reponse = requests.get(
+                self._url_base,
+                params=parametres,
+                timeout=TIMEOUT_SECONDES,
+            )
+        except requests.exceptions.Timeout as erreur:
+            self._logger.error(
+                "Délai d'attente dépassé (%s secondes) lors de l'appel à l'API OpenWeather.",
+                TIMEOUT_SECONDES,
+            )
+            raise ErreurAPIOpenWeather(
+                "Timeout lors de l'appel à l'API OpenWeather."
+            ) from erreur
+        except requests.exceptions.ConnectionError as erreur:
+            self._logger.error(
+                "Impossible de se connecter à l'API OpenWeather : %s", erreur
+            )
+            raise ErreurAPIOpenWeather(
+                "Erreur de connexion à l'API OpenWeather."
+            ) from erreur
+
+        # On distingue les codes d'erreur les plus fréquents pour journaliser
+        # un message explicite, plutôt qu'un message générique peu utile pour
+        # diagnostiquer le problème a posteriori.
+        if reponse.status_code == 401:
+            self._logger.error(
+                "Authentification refusée par l'API OpenWeather (code 401) : "
+                "vérifier la clé API renseignée dans le fichier .env."
+            )
+            raise ErreurAPIOpenWeather("Authentification refusée (401) par l'API OpenWeather.")
+
+        if reponse.status_code == 429:
+            self._logger.error(
+                "Quota d'appels dépassé (code 429) sur l'API OpenWeather."
+            )
+            raise ErreurAPIOpenWeather("Quota d'appels dépassé (429) sur l'API OpenWeather.")
+
+        if reponse.status_code >= 500:
+            self._logger.error(
+                "Erreur serveur côté OpenWeather (code %s).", reponse.status_code
+            )
+            raise ErreurAPIOpenWeather(
+                f"Erreur serveur ({reponse.status_code}) sur l'API OpenWeather."
+            )
+
+        if reponse.status_code != 200:
+            self._logger.error(
+                "Réponse HTTP inattendue (code %s) de l'API OpenWeather.",
+                reponse.status_code,
+            )
+            raise ErreurAPIOpenWeather(
+                f"Réponse HTTP inattendue ({reponse.status_code}) de l'API OpenWeather."
+            )
+
+        self._logger.info("Appel à l'API OpenWeather réussi (code 200).")
+        return reponse.json()
+
+    def recuperer_meteo_hubs_aeroportuaires(
+        self, hubs: tuple[HubAeroportuaire, ...] = HUBS_AEROPORTUAIRES
+    ) -> dict:
+        """
+        Interroge l'API OpenWeather pour chacun des hubs aéroportuaires
+        donnés, et regroupe les résultats dans un seul jeu de données.
+
+        Parameters
+        ----------
+        hubs : tuple[HubAeroportuaire, ...]
+            La liste des hubs à interroger. Par défaut, les dix hubs
+            aéroportuaires européens définis dans HUBS_AEROPORTUAIRES.
+
+        Returns
+        -------
+        dict
+            Un dictionnaire contenant un horodatage global de la collecte et
+            la liste des résultats par hub, chaque résultat étant enrichi du
+            nom et du code IATA de l'aéroport correspondant.
+
+        Note sur la gestion des erreurs
+        ----------------------------------------------------------------------
+        Si l'appel échoue pour un hub donné (ex : quota dépassé après
+        plusieurs appels), l'exception ErreurAPIOpenWeather se propage
+        immédiatement et interrompt la boucle : on préfère un échec net et
+        explicite plutôt qu'un jeu de données silencieusement incomplet.
+        """
+        resultats: list[dict] = []
+
+        for hub in hubs:
+            self._logger.info(
+                "Récupération de la météo pour %s (%s).", hub.nom, hub.code_iata
+            )
+            meteo_hub = self.recuperer_meteo_actuelle(hub.latitude, hub.longitude)
+            resultats.append(
+                {
+                    "nom_aeroport": hub.nom,
+                    "code_iata": hub.code_iata,
+                    "meteo": meteo_hub,
+                }
+            )
+
+        return {
+            "horodatage_collecte": datetime.now().isoformat(),
+            "hubs": resultats,
+        }
+
+    def sauvegarder_donnees_brutes(self, donnees: dict, dossier: str = "data/raw") -> str:
+        """
+        Sauvegarde les données brutes récupérées dans un fichier JSON horodaté.
+
+        Parameters
+        ----------
+        donnees : dict
+            Le contenu JSON à sauvegarder (typiquement le résultat de
+            `recuperer_meteo_hubs_aeroportuaires`).
+        dossier : str
+            Le dossier de destination. Créé automatiquement s'il n'existe pas.
+
+        Returns
+        -------
+        str
+            Le chemin complet du fichier créé.
+
+        Pourquoi un fichier horodaté plutôt qu'un seul fichier réécrit à
+        chaque appel ?
+        ----------------------------------------------------------------------
+        Conserver un historique de chaque extraction (plutôt que d'écraser la
+        précédente) permet de rejouer les étapes de transformation en aval
+        sans avoir à réinterroger l'API, et de conserver une trace brute en
+        cas d'anomalie détectée plus tard dans le pipeline. C'est le principe
+        de la zone "raw" d'un pipeline de données : les données n'y sont
+        jamais modifiées ni supprimées après écriture.
+        """
+        chemin_dossier = Path(dossier)
+        chemin_dossier.mkdir(parents=True, exist_ok=True)
+
+        horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
+        chemin_fichier = chemin_dossier / f"openweather_{horodatage}.json"
+
+        try:
+            with chemin_fichier.open("w", encoding="utf-8") as fichier:
+                json.dump(donnees, fichier, ensure_ascii=False, indent=2)
+        except OSError as erreur:
+            self._logger.error(
+                "Impossible d'écrire le fichier de données brutes '%s' : %s",
+                chemin_fichier,
+                erreur,
+            )
+            raise
+
+        self._logger.info("Données brutes sauvegardées dans '%s'.", chemin_fichier)
+        return str(chemin_fichier)
+
+
+if __name__ == "__main__":
+    # Exemple d'utilisation manuelle : récupération de la météo actuelle pour
+    # les dix hubs aéroportuaires européens, puis sauvegarde du résultat brut
+    # dans data/raw/. Utile pour une vérification rapide du module sans
+    # passer par les tests automatisés.
+    client = OpenWeatherClient()
+
+    donnees_meteo = client.recuperer_meteo_hubs_aeroportuaires()
+    chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_meteo)
+    logger.info("Exécution manuelle terminée, fichier généré : '%s'.", chemin_sauvegarde)
