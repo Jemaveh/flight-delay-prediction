@@ -15,7 +15,7 @@ Prédire si un vol subira un **retard significatif** (ex : > 15 minutes, seuil s
 - Features météo (vent, précipitations, visibilité à l'aéroport de départ/arrivée).
 - Feature "sentiment actualité" (score BERT agrégé par date/zone).
 
-**Formulation retenue** : [À COMPLÉTER PAR TOI — classification binaire (retard > 15min : oui/non) ou régression (nombre de minutes de retard) ? Le choix a un impact sur la métrique d'évaluation.]
+**Formulation retenue** : [À COMPLÉTER — classification binaire (retard > 15min : oui/non) ou régression (nombre de minutes de retard) ? Le choix a un impact sur la métrique d'évaluation.]
 
 ---
 

@@ -18,7 +18,7 @@
 
 ## 2. Gestion du code et bonnes pratiques
 
-- **Dépôt Git** : [À COMPLÉTER PAR TOI — lien vers ton dépôt GitHub/GitLab une fois créé]
+- **Dépôt Git** : [À COMPLÉTER — lien vers ton dépôt GitHub/GitLab une fois créé]
 - **Structure professionnelle** : Architecture modulaire en couches (`src/ingestion`, `src/processing`, `src/database`, `src/models`, `src/api`, `src/utils`, `config`) — chaque module a une responsabilité unique, testable indépendamment (voir `tests/`).
 - **Fichier de rejeu du projet** : `README.md` (racine) documente l'installation (`requirements.txt`, `.env.example`) et les commandes pour reproduire le pipeline de bout en bout.
 - **Gestion des secrets** : Toutes les clés d'API (OpenSky, OpenWeather, NewsAPI) et la chaîne de connexion à la base de données sont chargées via des **variables d'environnement** (fichier `.env`, jamais commité — voir `.gitignore`), validées au démarrage par `config/settings.py` (Pydantic `BaseSettings`). Aucun secret n'est écrit en dur dans le code source.
@@ -60,10 +60,10 @@
 
 ## 5. Bilan
 
-- **Principales difficultés rencontrées** (techniques, temporelles, organisationnelles) : [À COMPLÉTER PAR TOI]
-- **Verrous techniques majeurs** : [À COMPLÉTER PAR TOI]
-- **Contribution principale au projet** : [À COMPLÉTER PAR TOI]
-- **Pistes d'amélioration** (fiabilité, performance, maintenabilité) : [À COMPLÉTER PAR TOI]
+- **Principales difficultés rencontrées** (techniques, temporelles, organisationnelles) : [À COMPLÉTER]
+- **Verrous techniques majeurs** : [À COMPLÉTER]
+- **Contribution principale au projet** : [À COMPLÉTER]
+- **Pistes d'amélioration** (fiabilité, performance, maintenabilité) : [À COMPLÉTER]
 
 ---
 
@@ -71,13 +71,13 @@
 
 - **Scalabilité / intégration en production** : [À COMPLÉTER — ex : migration vers un entrepôt de données cloud managé (BigQuery, Snowflake) ou une instance PostgreSQL partitionnée, orchestration via Airflow plutôt que cron]
 - **Axes d'amélioration envisagés** : [À COMPLÉTER — nouvelles sources de données, automatisation complète, visualisation temps réel]
-- **Contribution du projet à une meilleure exploitation de la donnée** : [À COMPLÉTER PAR TOI]
+- **Contribution du projet à une meilleure exploitation de la donnée** : [À COMPLÉTER]
 
 ---
 
 ## 7. Bibliographie
 
-[À COMPLÉTER PAR TOI — articles, documentation officielle des APIs, ressources HuggingFace/LightGBM consultées]
+[À COMPLÉTER — articles, documentation officielle des APIs, ressources HuggingFace/LightGBM consultées]
 
 ---
 

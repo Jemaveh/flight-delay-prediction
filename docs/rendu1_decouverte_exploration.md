@@ -1,7 +1,7 @@
 # Rendu 1 — Rapport de découverte et d'exploration des sources de données
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
-> **Statut** : Brouillon — sections techniques pré-remplies, sections réflexives à compléter
+> **Statut** : Brouillon 
 > **Correspond à** : Phase 1 du projet — Ingestion et Data Profiling
 
 ---
@@ -10,7 +10,7 @@
 
 ### 1.1 Contexte
 
-- **Contexte métier / d'insertion du projet** : [À COMPLÉTER PAR TOI — dans quel cadre réalises-tu ce projet ? Reconversion, poste actuel, secteur visé ?]
+- **Contexte métier / d'insertion du projet** : Ce projet s'inscrit dans une démarche de reconversion professionnelle vers le métier de Data Engineer, réalisée dans le cadre de la formation certifiante DataScientest visant le titre RNCP 38919.
 - **Contexte technique** : Le secteur aérien génère un volume massif de données hétérogènes (position des vols en temps réel, conditions météorologiques, actualités impactant le trafic). Ces données sont dispersées dans des silos (APIs distinctes, formats différents) et ne sont, par défaut, reliées par aucun système commun. Le projet répond à un besoin technique classique de **Data Engineering : ingérer, fusionner et structurer des sources multi-format** pour les rendre exploitables par un pipeline de données (analytique et/ou Machine Learning).
 - **Contexte économique** : Les retards de vols représentent un coût direct pour les compagnies aériennes (pénalités, correspondances manquées, hébergement) et un coût indirect pour les aéroports et les passagers. Anticiper un retard, même partiellement, a une valeur économique réelle (allocation des ressources, communication proactive).
 - **Contexte scientifique** : Le projet s'appuie sur des travaux existants combinant données opérationnelles (ADS-B via OpenSky) et données exogènes (météo, actualités/sentiment) pour la prédiction de retards. L'apport de l'analyse de sentiment (NLP/BERT) sur des news est une approche moins conventionnelle qui vise à capturer des signaux faibls (grèves, perturbations sociales) absents des données structurées classiques.
@@ -22,9 +22,9 @@
   2. **Structuration** : Nettoyer, normaliser et fusionner ces sources dans un schéma de données cohérent (voir Rendu 2).
   3. **Automatisation** : Construire des scripts d'ingestion réutilisables et paramétrables (pas de collecte manuelle).
   4. **Mise à disposition** : Rendre les données exploitables pour un cas d'usage concret (prédiction de retard, voir Rendu 3 — Machine Learning).
-- **Niveau d'expertise de l'équipe vis-à-vis de l'ingestion/transformation/stockage** : [À COMPLÉTER PAR TOI]
-- **Échanges avec des experts techniques ou métiers** : [À COMPLÉTER PAR TOI — as-tu échangé avec quelqu'un du secteur aérien, data engineering, ou un mentor DataScientest ?]
-- **Projet similaire connu** : [À COMPLÉTER PAR TOI — connais-tu un projet similaire (interne à ton entreprise, ou public) ? En quoi t'a-t-il inspiré/aidé ?]
+- **Niveau d'expertise de l'équipe vis-à-vis de l'ingestion/transformation/stockage** : Une expérience déjà significative en data/analytics précédait ce projet, ce qui a permis de concentrer l'effort d'apprentissage sur les compétences plus spécifiquement liées à l'ingénierie de données : conception de pipelines d'ingestion automatisés, architecture de stockage relationnelle et conteneurisation, moins pratiquées jusqu'ici.
+- **Échanges avec des experts techniques ou métiers** : Ce projet a été mené en autonomie complète, sans échange complémentaire avec des experts du secteur aérien ou de la donnée en dehors du cadre d'encadrement standard de la formation.
+- **Projet similaire connu** : De nombreux projets de prédiction de retards de vols existent sur Kaggle, notamment à partir des données du Bureau of Transportation Statistics américain. Ces projets ont servi de source d'inspiration pour la définition du périmètre et de l'approche de ce projet.
 
 ---
 
@@ -43,7 +43,7 @@
   - OpenWeather fournit des mesures météorologiques agrégées par zone géographique — aucune donnée personnelle.
   - NewsAPI renvoie des articles de presse publics (titre, auteur éventuel, contenu) — le nom d'un journaliste peut apparaître, mais il s'agit d'une donnée déjà publique et non traitée à des fins d'identification. Aucune donnée sensible (santé, opinions, origine...) n'est collectée ou dérivée.
   - **Mesure de précaution appliquée** : aucun champ nominatif n'est conservé au-delà du strict nécessaire (le champ "auteur" des articles n'est pas utilisé dans les features du modèle).
-- **Volumétrie approximative** : [À COMPLÉTER PAR TOI une fois les scripts d'ingestion exécutés — taille sur disque, nombre de lignes/fichiers collectés sur la période de test]
+- **Volumétrie approximative** : [À COMPLÉTER une fois les scripts d'ingestion exécutés — taille sur disque, nombre de lignes/fichiers collectés sur la période de test]
 
 ### 2.2 Pertinence
 
@@ -61,9 +61,14 @@
 
 ## 3. Préparation et nettoyage
 
-- **Étapes de prétraitement appliquées** : [À COMPLÉTER PAR TOI/MOI au fur et à mesure du développement — normalisation des formats de date/heure (UTC), harmonisation des codes aéroports (IATA/ICAO), gestion des valeurs manquantes, déduplication]
-- **Scripts d'ingestion / automatisation** : Voir le module `src/ingestion/` (`opensky_client.py`, `openweather_client.py`, `newsapi_client.py`) — chaque client encapsule les appels API, la gestion des erreurs et la sauvegarde brute horodatée dans `data/raw/`.
-- **Transformations et enrichissements réalisés** : Le module `src/processing/sentiment_analysis.py` enrichit les articles bruts avec un score de sentiment calculé par un modèle BERT pré-entraîné (HuggingFace). Le module `src/processing/data_cleaning.py` normalise les 3 sources vers un format tabulaire homogène.
+- **Démarche retenue** : les règles de nettoyage sont identifiées et documentées au fur et à mesure de l'exploration de chaque source, avant d'être implémentées dans le pipeline de transformation en Phase 2 (Rendu 2). Ce choix évite d'écrire un code de nettoyage isolé source par source qu'il faudrait ensuite retravailler une fois les 3 sources connues et le schéma de fusion défini.
+- **Règles de nettoyage identifiées sur OpenSky** (voir `notebooks/01_exploration_opensky.ipynb` pour le détail statistique complet) :
+  - Le champ `sensors` est vide dans 100 % des cas observés : à exclure du pipeline.
+  - L'altitude barométrique (`baro_altitude`) est manquante pour la quasi-totalité des avions au sol (95,5 %) contre une infime minorité en vol (0,05 %) : traitement différencié requis selon le statut `on_ground` plutôt qu'une imputation uniforme.
+  - Des vitesses physiquement impossibles ont été observées (jusqu'à 1298 m/s), toujours associées à des positions anciennes : un filtre combinant l'âge de la donnée et un seuil de plausibilité physique est nécessaire avant tout usage de la vitesse comme feature.
+- **Règles de nettoyage sur OpenWeather et NewsAPI** : à documenter ici une fois l'exploration de ces deux sources réalisée.
+- **Scripts d'ingestion / automatisation** : Voir le module `src/ingestion/` (`opensky_client.py` disponible, `openweather_client.py` et `newsapi_client.py` à venir) — chaque client encapsule les appels API, la gestion des erreurs et la sauvegarde brute horodatée dans `data/raw/`.
+- **Transformations et enrichissements prévus** : l'implémentation effective du nettoyage (`src/processing/data_cleaning.py`) et de l'analyse de sentiment (`src/processing/sentiment_analysis.py`) est prévue en Phase 2, une fois les 3 sources explorées et le schéma de fusion arrêté.
 
 ---
 

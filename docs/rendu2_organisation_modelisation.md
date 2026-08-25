@@ -108,7 +108,7 @@ Nous choisissons une approche **ETL code-based en Python** (par opposition à un
 - **Optimisations de performance** :
   - **Format Parquet** (colonnes compressées) pour les données intermédiaires plutôt que CSV → lecture plus rapide, typage préservé.
   - **Indexation** PostgreSQL sur les clés de jointure (`airport_id`, `date_id`) pour accélérer les jointures entre `fact_flights` et les dimensions.
-  - [À COMPLÉTER PAR TOI une fois mesuré — temps d'exécution avant/après optimisation, taille des fichiers]
+  - [À COMPLÉTER une fois mesuré — temps d'exécution avant/après optimisation, taille des fichiers]
 - **Qualité et cohérence des données** :
   - **Validation de schéma** via Pydantic à l'entrée de chaque pipeline (rejet/log des enregistrements non conformes plutôt que crash silencieux).
   - **Tests unitaires** (`tests/`) sur les fonctions de nettoyage et de transformation (ex : vérifier qu'un enregistrement avec une date invalide est bien rejeté).
