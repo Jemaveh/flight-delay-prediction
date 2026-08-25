@@ -44,9 +44,8 @@ logger = get_logger(__name__)
 URL_BASE_OPENWEATHER = "https://api.openweathermap.org/data/2.5/weather"
 TIMEOUT_SECONDES = 10
 
-# Unités "metric" : température en degrés Celsius et vitesse du vent en
-# mètres par seconde, plus lisibles pour l'exploration que les unités par
-# défaut de l'API (Kelvin et miles par heure).
+# Unités "metric" : température en degrés Celsius, vitesse du vent en mètres
+# par seconde.
 UNITES = "metric"
 LANGUE = "fr"
 
@@ -74,12 +73,7 @@ class HubAeroportuaire:
     longitude: float
 
 
-# Liste fixe des hubs aéroportuaires européens couverts par le projet. Une
-# liste codée en dur, plutôt qu'une zone géographique comme pour OpenSky, est
-# cohérente avec le fonctionnement par point de l'API OpenWeather : on ne
-# cherche pas à couvrir toute l'Europe météorologiquement, seulement les
-# aéroports qui interviennent réellement comme origine ou destination dans
-# les données de vols.
+# Liste fixe des hubs aéroportuaires européens couverts par le projet.
 HUBS_AEROPORTUAIRES: tuple[HubAeroportuaire, ...] = (
     HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
     HubAeroportuaire("Londres Heathrow", "LHR", 51.4700, -0.4543),
@@ -97,12 +91,6 @@ HUBS_AEROPORTUAIRES: tuple[HubAeroportuaire, ...] = (
 class ErreurAPIOpenWeather(Exception):
     """
     Exception levée lorsque l'appel à l'API OpenWeather échoue.
-
-    Utiliser une exception dédiée plutôt que de laisser remonter les
-    exceptions brutes de `requests` permet aux modules appelants (pipeline
-    d'ingestion, orchestrateur) d'attraper une seule et même famille
-    d'erreurs, sans avoir à connaître le détail des exceptions internes de la
-    librairie HTTP utilisée.
     """
 
 
@@ -173,9 +161,6 @@ class OpenWeatherClient:
                 "Erreur de connexion à l'API OpenWeather."
             ) from erreur
 
-        # On distingue les codes d'erreur les plus fréquents pour journaliser
-        # un message explicite, plutôt qu'un message générique peu utile pour
-        # diagnostiquer le problème a posteriori.
         if reponse.status_code == 401:
             self._logger.error(
                 "Authentification refusée par l'API OpenWeather (code 401) : "
@@ -229,12 +214,11 @@ class OpenWeatherClient:
             la liste des résultats par hub, chaque résultat étant enrichi du
             nom et du code IATA de l'aéroport correspondant.
 
-        Note sur la gestion des erreurs
-        ----------------------------------------------------------------------
-        Si l'appel échoue pour un hub donné (ex : quota dépassé après
-        plusieurs appels), l'exception ErreurAPIOpenWeather se propage
-        immédiatement et interrompt la boucle : on préfère un échec net et
-        explicite plutôt qu'un jeu de données silencieusement incomplet.
+        Raises
+        ------
+        ErreurAPIOpenWeather
+            Si l'appel échoue pour un hub donné, l'exception se propage
+            immédiatement et interrompt la boucle.
         """
         resultats: list[dict] = []
 
@@ -272,16 +256,6 @@ class OpenWeatherClient:
         -------
         str
             Le chemin complet du fichier créé.
-
-        Pourquoi un fichier horodaté plutôt qu'un seul fichier réécrit à
-        chaque appel ?
-        ----------------------------------------------------------------------
-        Conserver un historique de chaque extraction (plutôt que d'écraser la
-        précédente) permet de rejouer les étapes de transformation en aval
-        sans avoir à réinterroger l'API, et de conserver une trace brute en
-        cas d'anomalie détectée plus tard dans le pipeline. C'est le principe
-        de la zone "raw" d'un pipeline de données : les données n'y sont
-        jamais modifiées ni supprimées après écriture.
         """
         chemin_dossier = Path(dossier)
         chemin_dossier.mkdir(parents=True, exist_ok=True)

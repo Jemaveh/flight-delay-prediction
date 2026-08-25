@@ -48,20 +48,13 @@ DUREE_MAX_INTERVALLE_SECONDES = 7 * 24 * 60 * 60
 
 # Valeurs placeholder présentes dans le fichier .env.example : si les identifiants
 # de l'utilisateur correspondent encore à ces valeurs, cela signifie qu'ils n'ont
-# pas été renseignés, et le module doit basculer en mode anonyme plutôt que
-# d'envoyer des identifiants invalides à l'API.
+# pas été renseignés.
 IDENTIFIANTS_NON_RENSEIGNES = {"", "ton_identifiant_opensky", "ton_mot_de_passe_opensky"}
 
 
 class ErreurAPIOpenSky(Exception):
     """
     Exception levée lorsque l'appel à l'API OpenSky Network échoue.
-
-    Utiliser une exception dédiée plutôt que de laisser remonter les
-    exceptions brutes de `requests` permet aux modules appelants (pipeline
-    d'ingestion, orchestrateur) d'attraper une seule et même famille
-    d'erreurs, sans avoir à connaître le détail des exceptions internes de la
-    librairie HTTP utilisée.
     """
 
 
@@ -89,15 +82,6 @@ class OpenSkyClient:
         tuple[str, str] | None
             Le couple (identifiant, mot de passe) si des identifiants réels
             ont été renseignés dans le fichier .env, sinon None.
-
-        Pourquoi ne pas lever une exception si les identifiants sont absents ?
-        ----------------------------------------------------------------------
-        L'authentification est OPTIONNELLE pour cette API : un usage anonyme
-        reste possible, avec un quota d'appels plus restreint. Bloquer tout le
-        pipeline parce qu'un identifiant optionnel est absent serait une
-        gestion d'erreur disproportionnée. On journalise un avertissement
-        pour que ce choix reste visible et traçable, sans interrompre
-        l'exécution.
         """
         if (
             settings.opensky_username in IDENTIFIANTS_NON_RENSEIGNES
@@ -173,9 +157,6 @@ class OpenSkyClient:
                 "Erreur de connexion à l'API OpenSky Network."
             ) from erreur
 
-        # On distingue les codes d'erreur les plus fréquents pour journaliser
-        # un message explicite, plutôt qu'un message générique peu utile pour
-        # diagnostiquer le problème a posteriori.
         if reponse.status_code == 401:
             self._logger.error(
                 "Authentification refusée par l'API OpenSky (code 401) : "
@@ -416,16 +397,6 @@ class OpenSkyClient:
         -------
         str
             Le chemin complet du fichier créé.
-
-        Pourquoi un fichier horodaté plutôt qu'un seul fichier réécrit à
-        chaque appel ?
-        ----------------------------------------------------------------------
-        Conserver un historique de chaque extraction (plutôt que d'écraser la
-        précédente) permet de rejouer les étapes de transformation en aval
-        sans avoir à réinterroger l'API, et de conserver une trace brute en
-        cas d'anomalie détectée plus tard dans le pipeline. C'est le principe
-        de la zone "raw" d'un pipeline de données : les données n'y sont
-        jamais modifiées ni supprimées après écriture.
         """
         chemin_dossier = Path(dossier)
         chemin_dossier.mkdir(parents=True, exist_ok=True)
