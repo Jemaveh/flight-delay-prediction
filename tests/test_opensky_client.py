@@ -1,5 +1,5 @@
 """
-Tests unitaires du client d'ingestion OpenSky Network
+Tests unitaires du module d'ingestion OpenSky Network
 (src/ingestion/opensky_client.py).
 
 Ligne de raisonnement
@@ -82,6 +82,116 @@ def test_recuperer_vols_leve_exception_sur_quota_depasse(mocker) -> None:
 
     with pytest.raises(ErreurAPIOpenSky):
         client.recuperer_vols_en_temps_reel()
+
+
+def test_recuperer_vols_depart_appelle_url_et_parametres_attendus(mocker) -> None:
+    """
+    Vérifie que l'appel HTTP cible bien l'endpoint /flights/departure, avec
+    le code ICAO, les timestamps et le timeout correctement transmis, et que
+    le paramètre Python `fin` est bien mappé sur le paramètre HTTP `end`.
+    """
+    vols_mock = [{"icao24": "abc123", "estDepartureAirport": "LFPG"}]
+    reponse_mock = _construire_reponse_mock(mocker, 200, vols_mock)
+    mock_get = mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
+    )
+
+    client = OpenSkyClient()
+    resultat = client.recuperer_vols_depart(icao_aeroport="LFPG", debut=1000, fin=2000)
+
+    mock_get.assert_called_once()
+    args_appel, kwargs_appel = mock_get.call_args
+
+    assert args_appel[0] == "https://opensky-network.org/api/flights/departure"
+    assert kwargs_appel["params"] == {"airport": "LFPG", "begin": 1000, "end": 2000}
+    assert kwargs_appel["timeout"] == 10
+    assert resultat == vols_mock
+
+
+def test_recuperer_vols_arrivee_appelle_url_et_parametres_attendus(mocker) -> None:
+    """
+    Vérifie que l'appel HTTP cible bien l'endpoint /flights/arrival, avec le
+    code ICAO, les timestamps et le timeout correctement transmis.
+    """
+    vols_mock = [{"icao24": "def456", "estArrivalAirport": "LFPG"}]
+    reponse_mock = _construire_reponse_mock(mocker, 200, vols_mock)
+    mock_get = mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
+    )
+
+    client = OpenSkyClient()
+    resultat = client.recuperer_vols_arrivee(icao_aeroport="LFPG", debut=1000, fin=2000)
+
+    mock_get.assert_called_once()
+    args_appel, kwargs_appel = mock_get.call_args
+
+    assert args_appel[0] == "https://opensky-network.org/api/flights/arrival"
+    assert kwargs_appel["params"] == {"airport": "LFPG", "begin": 1000, "end": 2000}
+    assert kwargs_appel["timeout"] == 10
+    assert resultat == vols_mock
+
+
+def test_recuperer_vols_depart_leve_exception_sur_quota_depasse(mocker) -> None:
+    """
+    Vérifie qu'une réponse HTTP 429 (quota d'appels dépassé) sur l'endpoint
+    /flights/departure est bien transformée en ErreurAPIOpenSky.
+    """
+    reponse_mock = _construire_reponse_mock(mocker, 429)
+    mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
+    )
+
+    client = OpenSkyClient()
+
+    with pytest.raises(ErreurAPIOpenSky):
+        client.recuperer_vols_depart(icao_aeroport="LFPG", debut=1000, fin=2000)
+
+
+def test_recuperer_vols_arrivee_leve_exception_sur_timeout(mocker) -> None:
+    """Vérifie qu'un Timeout réseau sur /flights/arrival lève ErreurAPIOpenSky."""
+    mocker.patch(
+        "src.ingestion.opensky_client.requests.get",
+        side_effect=requests.exceptions.Timeout,
+    )
+
+    client = OpenSkyClient()
+
+    with pytest.raises(ErreurAPIOpenSky):
+        client.recuperer_vols_arrivee(icao_aeroport="LFPG", debut=1000, fin=2000)
+
+
+def test_recuperer_vols_depart_leve_value_error_si_intervalle_trop_long(mocker) -> None:
+    """
+    Vérifie que dépasser l'intervalle maximal de 7 jours (604800 secondes)
+    entre `debut` et `fin` lève une ValueError sans effectuer d'appel réseau.
+    """
+    mock_get = mocker.patch("src.ingestion.opensky_client.requests.get")
+
+    client = OpenSkyClient()
+    debut = 0
+    fin = 604800 + 1
+
+    with pytest.raises(ValueError):
+        client.recuperer_vols_depart(icao_aeroport="LFPG", debut=debut, fin=fin)
+
+    mock_get.assert_not_called()
+
+
+def test_recuperer_vols_arrivee_leve_value_error_si_intervalle_trop_long(mocker) -> None:
+    """
+    Vérifie que la même contrainte de 7 jours maximum s'applique à
+    /flights/arrival, sans effectuer d'appel réseau.
+    """
+    mock_get = mocker.patch("src.ingestion.opensky_client.requests.get")
+
+    client = OpenSkyClient()
+    debut = 0
+    fin = 604800 + 1
+
+    with pytest.raises(ValueError):
+        client.recuperer_vols_arrivee(icao_aeroport="LFPG", debut=debut, fin=fin)
+
+    mock_get.assert_not_called()
 
 
 def test_sauvegarder_donnees_brutes_cree_un_fichier_avec_le_bon_contenu(

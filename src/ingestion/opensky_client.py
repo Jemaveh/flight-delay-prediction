@@ -1,5 +1,5 @@
 """
-Client d'ingestion pour l'API publique OpenSky Network.
+Module d'ingestion pour l'API publique OpenSky Network.
 
 Ligne de raisonnement
 ----------------------
@@ -10,11 +10,20 @@ mode anonyme avec un quota d'appels restreint, ou avec une authentification
 Basic Auth qui augmente ce quota.
 
 On implémente ici un appel HTTP direct via la librairie `requests` plutôt que
-d'utiliser une librairie cliente tierce dédiée à OpenSky : l'API REST est
+d'utiliser une librairie tierce dédiée à OpenSky : l'API REST est
 simple (un seul endpoint utile pour ce projet, des paramètres de requête
 basiques), et un appel direct rend explicite et contrôlable chaque aspect de
 la requête (timeout, gestion des erreurs, authentification), sans dépendre
 d'une librairie externe supplémentaire à maintenir.
+
+L'endpoint /states/all fournit uniquement des positions instantanées : pour
+chaque aéronef suivi, sa localisation et son état à l'instant de la requête,
+sans aucune information sur son aéroport d'origine ni sur son aéroport de
+destination. Les endpoints /flights/departure et /flights/arrival
+répondent à ce besoin : interrogés par aéroport (code ICAO) et par fenêtre
+temporelle, ils retournent la liste des vols ayant décollé ou atterri à cet
+aéroport durant la période demandée, avec pour chacun l'aéroport d'origine
+et l'aéroport de destination.
 """
 
 from __future__ import annotations
@@ -33,9 +42,13 @@ logger = get_logger(__name__)
 URL_BASE_OPENSKY = "https://opensky-network.org/api"
 TIMEOUT_SECONDES = 10
 
+# Intervalle maximal autorisé entre `debut` et `fin` sur les endpoints
+# /flights/departure et /flights/arrival, imposé par l'API OpenSky Network
+DUREE_MAX_INTERVALLE_SECONDES = 7 * 24 * 60 * 60
+
 # Valeurs placeholder présentes dans le fichier .env.example : si les identifiants
 # de l'utilisateur correspondent encore à ces valeurs, cela signifie qu'ils n'ont
-# pas été renseignés, et le client doit basculer en mode anonyme plutôt que
+# pas été renseignés, et le module doit basculer en mode anonyme plutôt que
 # d'envoyer des identifiants invalides à l'API.
 IDENTIFIANTS_NON_RENSEIGNES = {"", "ton_identifiant_opensky", "ton_mot_de_passe_opensky"}
 
@@ -54,14 +67,14 @@ class ErreurAPIOpenSky(Exception):
 
 class OpenSkyClient:
     """
-    Client permettant d'interroger l'API OpenSky Network et de sauvegarder les
+    Module permettant d'interroger l'API OpenSky Network et de sauvegarder les
     données brutes récupérées.
     """
 
     def __init__(self) -> None:
         """
-        Initialise le client : prépare l'URL de base de l'API et les
-        identifiants d'authentification (s'ils sont disponibles).
+        Initialise le module d'ingestion : prépare l'URL de base de l'API et
+        les identifiants d'authentification (s'ils sont disponibles).
         """
         self._logger = get_logger(__name__)
         self._url_base = URL_BASE_OPENSKY
@@ -91,7 +104,7 @@ class OpenSkyClient:
             or settings.opensky_password in IDENTIFIANTS_NON_RENSEIGNES
         ):
             self._logger.warning(
-                "Identifiants OpenSky non renseignés : le client fonctionnera "
+                "Identifiants OpenSky non renseignés : le module fonctionnera "
                 "en mode anonyme, avec un quota d'appels API plus restreint."
             )
             return None
@@ -196,6 +209,197 @@ class OpenSkyClient:
         self._logger.info("Appel à l'API OpenSky Network réussi (code 200).")
         return reponse.json()
 
+    def _recuperer_vols(
+        self, endpoint: str, icao_aeroport: str, debut: int, fin: int
+    ) -> list[dict]:
+        """
+        Interroge un endpoint /flights/{departure,arrival} de l'API OpenSky
+        Network et retourne la liste des vols correspondants.
+
+        Cette méthode privée factorise la logique commune aux méthodes
+        publiques `recuperer_vols_depart` et `recuperer_vols_arrivee`, qui ne
+        diffèrent que par le endpoint interrogé.
+
+        Parameters
+        ----------
+        endpoint : str
+            Le segment d'URL à interroger, "departure" ou "arrival".
+        icao_aeroport : str
+            Code ICAO de l'aéroport concerné (ex : "LFPG" pour Paris-Charles-
+            de-Gaulle).
+        debut : int
+            Timestamp Unix (en secondes) marquant le début de la fenêtre
+            temporelle recherchée.
+        fin : int
+            Timestamp Unix (en secondes) marquant la fin de la fenêtre
+            temporelle recherchée.
+
+        Returns
+        -------
+        list[dict]
+            La liste des vols retournés par l'API, chacun sous la forme d'un
+            dictionnaire contenant notamment les aéroports d'origine et de
+            destination, les horaires programmés et réels, ainsi que
+            l'indicatif du vol.
+
+        Raises
+        ------
+        ValueError
+            Si l'intervalle entre `debut` et `fin` dépasse 604800 secondes
+            (7 jours), limite maximale imposée par l'API OpenSky Network sur
+            ces deux endpoints.
+        ErreurAPIOpenSky
+            Si la requête échoue (timeout, erreur de connexion, ou code HTTP
+            d'erreur retourné par l'API).
+        """
+        if fin - debut > DUREE_MAX_INTERVALLE_SECONDES:
+            raise ValueError(
+                "L'intervalle entre 'debut' et 'fin' ne peut pas dépasser "
+                f"{DUREE_MAX_INTERVALLE_SECONDES} secondes (7 jours) sur "
+                "les endpoints /flights/departure et /flights/arrival de "
+                "l'API OpenSky Network."
+            )
+
+        url = f"{self._url_base}/flights/{endpoint}"
+        # Le paramètre HTTP attendu par l'API s'appelle "end", pas "fin"
+        parametres = {
+            "airport": icao_aeroport,
+            "begin": debut,
+            "end": fin,
+        }
+
+        try:
+            reponse = requests.get(
+                url,
+                params=parametres,
+                auth=self._auth,
+                timeout=TIMEOUT_SECONDES,
+            )
+        except requests.exceptions.Timeout as erreur:
+            self._logger.error(
+                "Délai d'attente dépassé (%s secondes) lors de l'appel à l'API OpenSky.",
+                TIMEOUT_SECONDES,
+            )
+            raise ErreurAPIOpenSky(
+                "Timeout lors de l'appel à l'API OpenSky Network."
+            ) from erreur
+        except requests.exceptions.ConnectionError as erreur:
+            self._logger.error(
+                "Impossible de se connecter à l'API OpenSky Network : %s", erreur
+            )
+            raise ErreurAPIOpenSky(
+                "Erreur de connexion à l'API OpenSky Network."
+            ) from erreur
+
+        if reponse.status_code == 401:
+            self._logger.error(
+                "Authentification refusée par l'API OpenSky (code 401) : "
+                "vérifier les identifiants renseignés dans le fichier .env."
+            )
+            raise ErreurAPIOpenSky("Authentification refusée (401) par l'API OpenSky Network.")
+
+        if reponse.status_code == 429:
+            self._logger.error(
+                "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+            )
+            raise ErreurAPIOpenSky("Quota d'appels dépassé (429) sur l'API OpenSky Network.")
+
+        if reponse.status_code >= 500:
+            self._logger.error(
+                "Erreur serveur côté OpenSky Network (code %s).", reponse.status_code
+            )
+            raise ErreurAPIOpenSky(
+                f"Erreur serveur ({reponse.status_code}) sur l'API OpenSky Network."
+            )
+
+        if reponse.status_code != 200:
+            self._logger.error(
+                "Réponse HTTP inattendue (code %s) de l'API OpenSky Network.",
+                reponse.status_code,
+            )
+            raise ErreurAPIOpenSky(
+                f"Réponse HTTP inattendue ({reponse.status_code}) de l'API OpenSky Network."
+            )
+
+        self._logger.info("Appel à l'API OpenSky Network réussi (code 200).")
+        return reponse.json()
+
+    def recuperer_vols_depart(self, icao_aeroport: str, debut: int, fin: int) -> list[dict]:
+        """
+        Interroge l'endpoint /flights/departure de l'API OpenSky Network.
+
+        Retourne la liste des vols ayant décollé de l'aéroport donné pendant
+        la fenêtre temporelle demandée, avec pour chacun l'aéroport
+        d'origine et l'aéroport de destination.
+
+        Parameters
+        ----------
+        icao_aeroport : str
+            Code ICAO de l'aéroport de départ (ex : "LFPG" pour Paris-CDG).
+        debut : int
+            Timestamp Unix (en secondes) marquant le début de la fenêtre
+            temporelle recherchée.
+        fin : int
+            Timestamp Unix (en secondes) marquant la fin de la fenêtre
+            temporelle recherchée.
+
+        Returns
+        -------
+        list[dict]
+            La liste des vols au départ de l'aéroport, tels que retournés
+            par l'API.
+
+        Raises
+        ------
+        ValueError
+            Si l'intervalle entre `debut` et `fin` dépasse 604800 secondes
+            (7 jours), limite maximale imposée par l'API OpenSky Network sur
+            cet endpoint.
+        ErreurAPIOpenSky
+            Si la requête échoue (timeout, erreur de connexion, ou code HTTP
+            d'erreur retourné par l'API).
+        """
+        return self._recuperer_vols("departure", icao_aeroport, debut, fin)
+
+    def recuperer_vols_arrivee(self, icao_aeroport: str, debut: int, fin: int) -> list[dict]:
+        """
+        Interroge l'endpoint /flights/arrival de l'API OpenSky Network.
+
+        Retourne la liste des vols ayant atterri à l'aéroport donné pendant
+        la fenêtre temporelle demandée, avec pour chacun l'aéroport
+        d'origine et l'aéroport de destination. Mêmes paramètres, même
+        contrainte d'intervalle et mêmes exceptions que
+        `recuperer_vols_depart` : voir son docstring pour le détail.
+
+        Parameters
+        ----------
+        icao_aeroport : str
+            Code ICAO de l'aéroport d'arrivée (ex : "LFPG" pour Paris-CDG).
+        debut : int
+            Timestamp Unix (en secondes) marquant le début de la fenêtre
+            temporelle recherchée.
+        fin : int
+            Timestamp Unix (en secondes) marquant la fin de la fenêtre
+            temporelle recherchée.
+
+        Returns
+        -------
+        list[dict]
+            La liste des vols à l'arrivée de l'aéroport, tels que retournés
+            par l'API.
+
+        Raises
+        ------
+        ValueError
+            Si l'intervalle entre `debut` et `fin` dépasse 604800 secondes
+            (7 jours), limite maximale imposée par l'API OpenSky Network sur
+            cet endpoint.
+        ErreurAPIOpenSky
+            Si la requête échoue (timeout, erreur de connexion, ou code HTTP
+            d'erreur retourné par l'API).
+        """
+        return self._recuperer_vols("arrival", icao_aeroport, debut, fin)
+
     def sauvegarder_donnees_brutes(self, donnees: dict, dossier: str = "data/raw") -> str:
         """
         Sauvegarde les données brutes récupérées dans un fichier JSON horodaté.
@@ -248,10 +452,23 @@ if __name__ == "__main__":
     # Exemple d'utilisation manuelle : récupération des vols au-dessus de la
     # France métropolitaine (bounding box approximative), puis sauvegarde du
     # résultat brut dans data/raw/. Utile pour une vérification rapide du
-    # client sans passer par les tests automatisés.
+    # module sans passer par les tests automatisés.
     client = OpenSkyClient()
     BBOX_FRANCE = (41.0, -5.0, 51.5, 10.0)  # lamin, lomin, lamax, lomax
 
     donnees_vols = client.recuperer_vols_en_temps_reel(bbox=BBOX_FRANCE)
     chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_vols)
     logger.info("Exécution manuelle terminée, fichier généré : '%s'.", chemin_sauvegarde)
+
+    # Exemple d'utilisation des vols programmés : vols au départ de Paris-CDG
+    # sur les dernières 24 heures
+    instant_present = int(datetime.now().timestamp())
+    instant_hier = instant_present - 24 * 60 * 60
+
+    vols_depart_cdg = client.recuperer_vols_depart(
+        icao_aeroport="LFPG", debut=instant_hier, fin=instant_present
+    )
+    logger.info(
+        "Vols au départ de LFPG sur les dernières 24h : %s vol(s) trouvé(s).",
+        len(vols_depart_cdg),
+    )
