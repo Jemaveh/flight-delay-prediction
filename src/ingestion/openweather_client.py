@@ -18,25 +18,22 @@ définit donc une liste fixe de hubs (constante HUBS_AEROPORTUAIRES), et le
 module boucle sur cette liste pour construire un jeu de données multi-
 aéroports en plusieurs appels API.
 
-Comme pour OpenSky, on implémente ici un appel HTTP direct via la librairie
-`requests` plutôt que d'utiliser une librairie tierce dédiée à
-OpenWeather : l'API REST est simple (un seul endpoint utile pour ce projet,
-des paramètres de requête basiques), et un appel direct rend explicite et
-contrôlable chaque aspect de la requête (timeout, gestion des erreurs,
-authentification par clé API), sans dépendre d'une librairie externe
-supplémentaire à maintenir.
+Les appels sont effectués directement via la librairie `requests`, ce qui
+rend explicite chaque aspect de la requête (timeout, gestion des erreurs,
+authentification).
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
 from config.settings import settings
+from src.utils.chemins import chemin_relatif_projet
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -210,9 +207,9 @@ class OpenWeatherClient:
         Returns
         -------
         dict
-            Un dictionnaire contenant un horodatage global de la collecte et
-            la liste des résultats par hub, chaque résultat étant enrichi du
-            nom et du code IATA de l'aéroport correspondant.
+            Un dictionnaire contenant un horodatage global UTC de la collecte
+            et la liste des résultats par hub, chaque résultat étant enrichi
+            du nom et du code IATA de l'aéroport correspondant.
 
         Raises
         ------
@@ -236,7 +233,7 @@ class OpenWeatherClient:
             )
 
         return {
-            "horodatage_collecte": datetime.now().isoformat(),
+            "horodatage_collecte": datetime.now(timezone.utc).isoformat(),
             "hubs": resultats,
         }
 
@@ -269,17 +266,20 @@ class OpenWeatherClient:
         except OSError as erreur:
             self._logger.error(
                 "Impossible d'écrire le fichier de données brutes '%s' : %s",
-                chemin_fichier,
+                chemin_relatif_projet(chemin_fichier),
                 erreur,
             )
             raise
 
-        self._logger.info("Données brutes sauvegardées dans '%s'.", chemin_fichier)
+        self._logger.info(
+            "Données brutes sauvegardées dans '%s'.",
+            chemin_relatif_projet(chemin_fichier),
+        )
         return str(chemin_fichier)
 
 
 if __name__ == "__main__":
-    # Exemple d'utilisation manuelle : récupération de la météo actuelle pour
+    # Exemple d'utilisation : récupération de la météo actuelle pour
     # les dix hubs aéroportuaires européens, puis sauvegarde du résultat brut
     # dans data/raw/. Utile pour une vérification rapide du module sans
     # passer par les tests automatisés.
@@ -287,4 +287,7 @@ if __name__ == "__main__":
 
     donnees_meteo = client.recuperer_meteo_hubs_aeroportuaires()
     chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_meteo)
-    logger.info("Exécution manuelle terminée, fichier généré : '%s'.", chemin_sauvegarde)
+    logger.info(
+        "Exécution manuelle terminée, fichier généré : '%s'.",
+        chemin_relatif_projet(chemin_sauvegarde),
+    )

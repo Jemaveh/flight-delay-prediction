@@ -11,6 +11,7 @@ disponibilité de l'API OpenWeather.
 """
 
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -126,6 +127,31 @@ def test_recuperer_meteo_hubs_aeroportuaires_boucle_sur_chaque_hub(mocker) -> No
     assert resultat["hubs"][0]["code_iata"] == "CDG"
     assert resultat["hubs"][1]["code_iata"] == "LHR"
     assert resultat["hubs"][0]["meteo"] == {"main": {"temp": 15.0}}
+
+
+def test_recuperer_meteo_hubs_aeroportuaires_horodatage_collecte_est_utc(mocker) -> None:
+    """
+    Vérifie que l'horodatage de collecte est un horodatage UTC (suffixe
+    `+00:00` ou `Z`), et non une heure locale naïve.
+    """
+    reponse_mock = _construire_reponse_mock(mocker, 200, {"main": {"temp": 15.0}})
+    mocker.patch(
+        "src.ingestion.openweather_client.requests.get", return_value=reponse_mock
+    )
+
+    hubs_test = (
+        HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
+    )
+    client = OpenWeatherClient()
+    resultat = client.recuperer_meteo_hubs_aeroportuaires(hubs=hubs_test)
+
+    horodatage = resultat["horodatage_collecte"]
+    assert horodatage.endswith("+00:00") or horodatage.endswith("Z")
+
+    normalise = horodatage.replace("Z", "+00:00")
+    instant = datetime.fromisoformat(normalise)
+    assert instant.tzinfo is not None
+    assert instant.utcoffset() == timedelta(0)
 
 
 def test_sauvegarder_donnees_brutes_cree_un_fichier_avec_le_bon_contenu(

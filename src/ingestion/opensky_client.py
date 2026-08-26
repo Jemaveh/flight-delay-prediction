@@ -9,12 +9,9 @@ des aéronefs suivis par le réseau de récepteurs ADS-B, leur position et leur
 mode anonyme avec un quota d'appels restreint, ou avec une authentification
 Basic Auth qui augmente ce quota.
 
-On implémente ici un appel HTTP direct via la librairie `requests` plutôt que
-d'utiliser une librairie tierce dédiée à OpenSky : l'API REST est
-simple (un seul endpoint utile pour ce projet, des paramètres de requête
-basiques), et un appel direct rend explicite et contrôlable chaque aspect de
-la requête (timeout, gestion des erreurs, authentification), sans dépendre
-d'une librairie externe supplémentaire à maintenir.
+Les appels sont effectués directement via la librairie `requests`, ce qui
+rend explicite chaque aspect de la requête (timeout, gestion des erreurs,
+authentification).
 
 L'endpoint /states/all fournit uniquement des positions instantanées : pour
 chaque aéronef suivi, sa localisation et son état à l'instant de la requête,
@@ -35,6 +32,7 @@ from pathlib import Path
 import requests
 
 from config.settings import settings
+from src.utils.chemins import chemin_relatif_projet
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -49,7 +47,7 @@ DUREE_MAX_INTERVALLE_SECONDES = 7 * 24 * 60 * 60
 # Valeurs placeholder présentes dans le fichier .env.example : si les identifiants
 # de l'utilisateur correspondent encore à ces valeurs, cela signifie qu'ils n'ont
 # pas été renseignés.
-IDENTIFIANTS_NON_RENSEIGNES = {"", "ton_identifiant_opensky", "ton_mot_de_passe_opensky"}
+IDENTIFIANTS_NON_RENSEIGNES = {"", "identifiant_opensky", "mot_de_passe_opensky"}
 
 
 class ErreurAPIOpenSky(Exception):
@@ -410,12 +408,15 @@ class OpenSkyClient:
         except OSError as erreur:
             self._logger.error(
                 "Impossible d'écrire le fichier de données brutes '%s' : %s",
-                chemin_fichier,
+                chemin_relatif_projet(chemin_fichier),
                 erreur,
             )
             raise
 
-        self._logger.info("Données brutes sauvegardées dans '%s'.", chemin_fichier)
+        self._logger.info(
+            "Données brutes sauvegardées dans '%s'.",
+            chemin_relatif_projet(chemin_fichier),
+        )
         return str(chemin_fichier)
 
 
@@ -429,7 +430,10 @@ if __name__ == "__main__":
 
     donnees_vols = client.recuperer_vols_en_temps_reel(bbox=BBOX_FRANCE)
     chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_vols)
-    logger.info("Exécution manuelle terminée, fichier généré : '%s'.", chemin_sauvegarde)
+    logger.info(
+        "Exécution manuelle terminée, fichier généré : '%s'.",
+        chemin_relatif_projet(chemin_sauvegarde),
+    )
 
     # Exemple d'utilisation des vols programmés : vols au départ de Paris-CDG
     # sur les dernières 24 heures

@@ -12,15 +12,10 @@ conditions météo extrêmes, perturbations du contrôle aérien, incidents
 aéroportuaires) susceptibles d'impacter les vols, ce que /v2/top-headlines,
 limité à un tri par catégorie/pays, ne permet pas.
 
-Comme pour OpenSky et OpenWeather, on implémente ici un appel HTTP direct via
-la librairie `requests` plutôt que d'utiliser une librairie tierce dédiée à
-NewsAPI : l'API REST reste simple (un seul endpoint utile pour ce projet, des
-paramètres de requête basiques), et un appel direct rend explicite et
-contrôlable chaque aspect de la requête (timeout, gestion des erreurs,
-authentification par clé API), sans dépendre d'une librairie externe
-supplémentaire à maintenir. La clé API est transmise en paramètre de requête
-(`apiKey`), méthode la plus simple documentée par NewsAPI et cohérente avec
-l'authentification par paramètre déjà utilisée pour OpenWeather.
+Les appels sont effectués directement via la librairie `requests`, ce qui
+rend explicite chaque aspect de la requête (timeout, gestion des erreurs,
+authentification). La clé API est transmise en paramètre de requête
+(`apiKey`), comme documenté par NewsAPI.
 
 Le plan gratuit de NewsAPI impose deux contraintes qui structurent ce
 module : les résultats sont limités aux articles publiés dans les
@@ -44,12 +39,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
 from config.settings import settings
+from src.utils.chemins import chemin_relatif_projet
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -281,8 +277,8 @@ class NewsApiClient:
         Returns
         -------
         dict
-            Un dictionnaire contenant un horodatage global de la collecte et
-            la liste des résultats par requête, chaque résultat étant
+            Un dictionnaire contenant un horodatage global UTC de la collecte
+            et la liste des résultats par requête, chaque résultat étant
             enrichi des mots-clés et de la langue de la requête
             correspondante.
 
@@ -315,7 +311,7 @@ class NewsApiClient:
             )
 
         return {
-            "horodatage_collecte": datetime.now().isoformat(),
+            "horodatage_collecte": datetime.now(timezone.utc).isoformat(),
             "requetes": resultats,
         }
 
@@ -348,17 +344,20 @@ class NewsApiClient:
         except OSError as erreur:
             self._logger.error(
                 "Impossible d'écrire le fichier de données brutes '%s' : %s",
-                chemin_fichier,
+                chemin_relatif_projet(chemin_fichier),
                 erreur,
             )
             raise
 
-        self._logger.info("Données brutes sauvegardées dans '%s'.", chemin_fichier)
+        self._logger.info(
+            "Données brutes sauvegardées dans '%s'.",
+            chemin_relatif_projet(chemin_fichier),
+        )
         return str(chemin_fichier)
 
 
 if __name__ == "__main__":
-    # Exemple d'utilisation manuelle : récupération des actualités pour les
+    # Exemple d'utilisation : récupération des actualités pour les
     # cinq requêtes mots-clés/langue définies, puis sauvegarde du résultat
     # brut dans data/raw/. Utile pour une vérification rapide du module sans
     # passer par les tests automatisés.
@@ -366,4 +365,7 @@ if __name__ == "__main__":
 
     donnees_actualites = client.recuperer_actualites_aeroportuaires()
     chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_actualites)
-    logger.info("Exécution manuelle terminée, fichier généré : '%s'.", chemin_sauvegarde)
+    logger.info(
+        "Exécution manuelle terminée, fichier généré : '%s'.",
+        chemin_relatif_projet(chemin_sauvegarde),
+    )

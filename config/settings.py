@@ -15,18 +15,8 @@ La solution standard en Data Engineering consiste à charger ces valeurs depuis
 des VARIABLES D'ENVIRONNEMENT, elles-mêmes définies dans un fichier local
 ".env" qui n'est JAMAIS commité (voir la règle correspondante dans .gitignore).
 
-On utilise ici la librairie "pydantic-settings" plutôt qu'un simple
-`os.getenv("MA_VARIABLE")` répété dans chaque module, pour trois raisons :
-    1. VALIDATION AUTOMATIQUE : si une variable obligatoire manque ou a le
-       mauvais type, l'erreur apparaît immédiatement au démarrage de
-       l'application, avec un message clair, plutôt que de planter au milieu
-       d'un pipeline plusieurs minutes plus tard.
-    2. TYPAGE FORT : chaque variable est typée explicitement (str, int...), ce
-       qui permet à l'éditeur de code et aux outils d'analyse statique de
-       détecter des erreurs avant même d'exécuter le programme.
-    3. SOURCE UNIQUE DE VÉRITÉ : un seul objet "settings", importable partout
-       dans le projet, évite de dupliquer la logique de lecture des variables
-       d'environnement dans chaque module (src/ingestion, src/database...).
+La configuration est chargée depuis les variables d'environnement via
+pydantic-settings, qui valide et type chaque paramètre au démarrage.
 """
 
 from __future__ import annotations
@@ -81,17 +71,11 @@ class Settings(BaseSettings):
 
 def _charger_configuration() -> Settings:
     """
-    Instancie l'objet Settings en gérant proprement le cas où le fichier .env
-    est absent ou incomplet.
+    Instancie l'objet Settings et le retourne.
 
-    Pourquoi une fonction dédiée plutôt qu'un simple `settings = Settings()` ?
-    ----------------------------------------------------------------------
-    Sans ce garde-fou, une erreur de configuration produirait un traceback
-    Pydantic technique et peu lisible pour un⋅e débutant⋅e (du type
-    "ValidationError: 4 validation errors for Settings..."). On préfère
-    intercepter cette erreur pour afficher un message pédagogique et
-    actionnable, qui explique QUOI faire pour la corriger, plutôt que de
-    laisser remonter une pile d'appels brute.
+    En cas de fichier .env absent ou incomplet, l'erreur de validation
+    Pydantic est interceptée pour afficher un message expliquant comment
+    corriger la configuration, puis le programme s'arrête.
 
     Returns
     -------
@@ -105,8 +89,8 @@ def _charger_configuration() -> Settings:
             "\n[ERREUR DE CONFIGURATION] Impossible de charger les paramètres du projet.\n"
             "Cause probable : le fichier '.env' est absent ou incomplet à la racine du projet.\n\n"
             "Solution :\n"
-            "  1. Copie le fichier modèle :   copy .env.example .env   (Windows)\n"
-            "  2. Ouvre '.env' et renseigne tes vraies clés d'API.\n\n"
+            "  1. Copier le fichier modèle :   copy .env.example .env   (Windows)\n"
+            "  2. Ouvrir '.env' et renseigner les clés d'API réelles.\n\n"
             f"Détail technique de l'erreur Pydantic :\n{erreur}\n"
         )
         print(message, file=sys.stderr)

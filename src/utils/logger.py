@@ -1,22 +1,9 @@
 """
 Module de logging centralisé du projet "Airlines Delay Prediction".
 
-Ligne de raisonnement
-----------------------
-Pourquoi ne pas se contenter de `print()` pour suivre l'exécution du pipeline ?
-    - `print()` ne permet pas de distinguer un simple message d'information
-      d'une erreur critique (pas de notion de "niveau" de gravité).
-    - `print()` n'écrit que dans la console : impossible de consulter
-      l'historique des exécutions passées une fois le terminal fermé.
-    - En production, on a besoin de savoir QUAND (timestamp) et OÙ (quel
-      module) un événement s'est produit, pas seulement CE QUI s'est produit.
-
-On utilise ici le module `logging` de la bibliothèque standard Python (aucune
-dépendance externe à installer) plutôt qu'une librairie tierce comme
-`loguru` : ses fonctionnalités suffisent largement aux besoins du projet, et
-cela évite d'ajouter une dépendance supplémentaire pour un gain marginal, tout
-en restant l'outil que l'on croise le plus souvent dans du code Python
-professionnel.
+Le suivi d'exécution passe par le module `logging` de la bibliothèque
+standard, qui apporte les niveaux de gravité, l'horodatage, le module
+émetteur et l'écriture dans un fichier persistant.
 """
 
 from __future__ import annotations
@@ -54,17 +41,11 @@ def get_logger(nom_module: str) -> logging.Logger:
         Une instance de logger prête à l'emploi, écrivant simultanément dans
         la console et dans le fichier `logs/app.log`.
 
-    Pourquoi vérifier `logger.handlers` avant d'en ajouter de nouveaux ?
-    ----------------------------------------------------------------------
-    Le module `logging` de Python renvoie la MÊME instance de logger à chaque
-    appel de `logging.getLogger(nom_module)` avec un nom identique (c'est un
-    registre interne partagé par toute l'application). Si l'on ajoutait un
-    handler à chaque appel de `get_logger()` sans vérifier l'existant, un
-    module sollicité plusieurs fois (ex : dans plusieurs tests, ou si le
-    pipeline importe deux fois le même module) finirait par afficher CHAQUE
-    message de log en double, triple, etc. On protège donc cette fonction
-    pour qu'elle soit "idempotente" : l'appeler plusieurs fois avec le même
-    nom produit toujours le même résultat, sans effet de bord cumulatif.
+    Notes
+    -----
+    `logging.getLogger` renvoie la même instance pour un nom donné. Les
+    handlers ne sont donc ajoutés que si le logger n'en possède pas encore,
+    faute de quoi un appel répété afficherait chaque message en double.
     """
     logger = logging.getLogger(nom_module)
 
