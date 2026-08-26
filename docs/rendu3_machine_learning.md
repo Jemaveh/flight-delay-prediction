@@ -35,7 +35,7 @@ Prédire si un vol subira un **retard significatif** (ex : > 15 minutes, seuil s
 - **Données tabulaires hétérogènes** (mélange de catégorielles et numériques, valeurs manquantes fréquentes côté météo) : les modèles à base d'arbres de type Gradient Boosting sont reconnus comme état de l'art sur ce type de données, surpassant généralement les réseaux de neurones qui excellent plutôt sur données non-structurées (image, texte, son).
 - **Gestion native des valeurs manquantes et des variables catégorielles** (contrairement à la régression logistique qui nécessite un encodage et une imputation manuels complets).
 - **Rapidité d'entraînement** (boosting par histogrammes) permettant d'itérer rapidement sur le feature engineering.
-- **Interprétabilité** : LightGBM fournit nativement l'importance des features (SHAP compatible), ce qui permet d'expliquer au jury *pourquoi* le modèle prédit un retard (ex : "la feature vent_kmh contribue à 30% de la décision").
+- **Interprétabilité** : LightGBM fournit nativement l'importance des features (SHAP compatible), ce qui permet d'expliquer *pourquoi* le modèle prédit un retard (ex : "la feature vent_kmh contribue à 30% de la décision").
 
 ---
 

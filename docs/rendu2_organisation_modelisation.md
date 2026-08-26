@@ -17,13 +17,13 @@
 - **Gestion native de la concurrence d'accès** : contrairement à une base embarquée, PostgreSQL gère nativement plusieurs connexions simultanées en lecture et en écriture, ce qui correspond à un usage réaliste où le pipeline d'ingestion, l'API de prédiction et d'éventuels outils d'analyse accèdent à la base en parallèle.
 - **Intégration naturelle avec un environnement conteneurisé** : une image Docker officielle est disponible, ce qui prépare directement la conteneurisation prévue en Phase 4 (le service de base de données rejoint les autres services du `docker-compose` dès la Phase 2, plutôt que d'être ajouté après coup).
 - **Compatibilité avec SQLAlchemy** : l'utilisation d'un toolkit SQL standard (SQLAlchemy) au-dessus de PostgreSQL facilite l'écriture de requêtes portables et la maintenance du code d'accès aux données.
-- MongoDB (NoSQL document) a été écarté : nos données sont structurées et relationnelles par nature (un vol a une météo et un contexte d'actualité associés à une date/aéroport) — un modèle relationnel est plus adapté qu'un stockage document flexible dont on n'a pas l'usage ici.
+- MongoDB (NoSQL document) a été écarté : mes données sont structurées et relationnelles par nature (un vol a une météo et un contexte d'actualité associés à une date/aéroport) — un modèle relationnel est plus adapté qu'un stockage document flexible dont on n'a pas l'usage ici.
 
 Une base de données analytique embarquée (de type DuckDB) aurait également constitué un choix technique valide pour le volume de données de ce projet, notamment pour sa simplicité de mise en œuvre sans serveur dédié. PostgreSQL a été retenu à la place afin de démontrer une compétence de gestion de base de données client-serveur complète (connexion réseau, gestion de la concurrence, conteneurisation), plus représentative des architectures rencontrées en environnement de production.
 
 ### 1.2 Choix d'architecture : Schéma en étoile (Star Schema)
 
-Nous adoptons un **schéma en étoile**, standard des Data Warehouses pour les cas d'usage analytiques/ML :
+J'adopte un **schéma en étoile**, standard des Data Warehouses pour les cas d'usage analytiques/ML :
 
 ```
                     ┌──────────────────┐
@@ -48,8 +48,8 @@ Nous adoptons un **schéma en étoile**, standard des Data Warehouses pour les c
 ```
 
 **Pourquoi un schéma en étoile plutôt qu'un schéma en flocon ou un Data Lake brut ?**
-- **Vs. flocon (snowflake)** : le flocon normalise davantage les dimensions (ex : `dim_airport` éclatée en `dim_ville` + `dim_pays`), ce qui réduit la redondance mais complexifie les jointures. Vu le volume modeste de notre projet (quelques centaines/milliers d'aéroports et d'entrées météo), la redondance du schéma en étoile est négligeable et les requêtes restent simples — critère prioritaire pour un pipeline ML qui doit produire une table plate (features) rapidement.
-- **Vs. Data Lake brut (fichiers Parquet non modélisés)** : un Data Lake est pertinent pour du stockage brut à très grande échelle et une exploration ad hoc. Notre volumétrie ne le justifie pas, et un schéma en étoile offre une structure prête à l'emploi pour le feature engineering (Rendu 3 — ML) sans étape de modélisation supplémentaire en aval.
+- **Vs. flocon (snowflake)** : le flocon normalise davantage les dimensions (ex : `dim_airport` éclatée en `dim_ville` + `dim_pays`), ce qui réduit la redondance mais complexifie les jointures. Vu le volume modeste de mon projet (quelques centaines/milliers d'aéroports et d'entrées météo), la redondance du schéma en étoile est négligeable et les requêtes restent simples — critère prioritaire pour un pipeline ML qui doit produire une table plate (features) rapidement.
+- **Vs. Data Lake brut (fichiers Parquet non modélisés)** : un Data Lake est pertinent pour du stockage brut à très grande échelle et une exploration ad hoc. Ma volumétrie ne le justifie pas, et un schéma en étoile offre une structure prête à l'emploi pour le feature engineering (Rendu 3 — ML) sans étape de modélisation supplémentaire en aval.
 
 ### 1.3 Table de faits et dimensions (détail)
 
@@ -76,7 +76,7 @@ La clé de jointure commune entre les 3 sources est la paire **(aéroport, date/
 
 ### 2.1 Pipelines de données : ETL, code-based (Python)
 
-Nous choisissons une approche **ETL code-based en Python** (par opposition à une approche déclarative type dbt/SQL) :
+Je choisis une approche **ETL code-based en Python** (par opposition à une approche déclarative type dbt/SQL) :
 
 **Pourquoi Python plutôt que dbt ?**
 - dbt est excellent pour transformer des données **déjà présentes dans un entrepôt SQL**. Ici, l'étape critique est l'**ingestion depuis des APIs externes hétérogènes** (JSON complexe, authentification, gestion d'erreurs réseau, appel à un modèle BERT) — un besoin procédural que Python gère nativement, alors que dbt n'est pas conçu pour appeler des APIs ou exécuter un modèle de NLP.

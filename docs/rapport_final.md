@@ -18,7 +18,7 @@
 
 ## 2. Gestion du code et bonnes pratiques
 
-- **Dépôt Git** : [À COMPLÉTER — lien vers ton dépôt GitHub/GitLab une fois créé]
+- **Dépôt Git** : [À COMPLÉTER — lien vers le dépôt GitHub/GitLab une fois créé]
 - **Structure professionnelle** : Architecture modulaire en couches (`src/ingestion`, `src/processing`, `src/database`, `src/models`, `src/api`, `src/utils`, `config`) — chaque module a une responsabilité unique, testable indépendamment (voir `tests/`).
 - **Fichier de rejeu du projet** : `README.md` (racine) documente l'installation (`requirements.txt`, `.env.example`) et les commandes pour reproduire le pipeline de bout en bout.
 - **Gestion des secrets** : Toutes les clés d'API (OpenSky, OpenWeather, NewsAPI) et la chaîne de connexion à la base de données sont chargées via des **variables d'environnement** (fichier `.env`, jamais commité — voir `.gitignore`), validées au démarrage par `config/settings.py` (Pydantic `BaseSettings`). Aucun secret n'est écrit en dur dans le code source.
@@ -54,7 +54,7 @@
 - **Automatisation des traitements** : [À COMPLÉTER — orchestration retenue : cron simple, ou GitHub Actions planifié, selon le temps disponible en Phase 4]
 - **CI/CD** : Pipeline GitHub Actions exécutant à chaque push : installation des dépendances, linting, tests unitaires (`pytest`), et build de l'image Docker.
 - **Monitoring** : Logs structurés (voir `src/utils/logger.py`) centralisant les erreurs d'ingestion, les temps d'exécution et les alertes de rate-limiting API. [À COMPLÉTER — outil de monitoring retenu si le temps le permet : simple fichier de log, ou solution dédiée]
-- **Gestion des erreurs et alertes** : Chaque client d'ingestion utilise un bloc `try/except` ciblé (pas de `except` générique silencieux) qui journalise l'erreur avec son contexte (source, timestamp, message) sans interrompre les autres sources en cas d'échec partiel (résilience du pipeline).
+- **Gestion des erreurs et alertes** : Chaque module d'ingestion utilise un bloc `try/except` ciblé (pas de `except` générique silencieux) qui journalise l'erreur avec son contexte (source, timestamp, message) sans interrompre les autres sources en cas d'échec partiel (résilience du pipeline).
 
 ---
 
