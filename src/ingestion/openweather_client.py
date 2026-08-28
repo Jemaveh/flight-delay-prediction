@@ -58,6 +58,8 @@ class HubAeroportuaire:
         Nom usuel de l'aéroport.
     code_iata : str
         Code IATA à trois lettres de l'aéroport.
+    code_icao : str
+        Code ICAO à quatre lettres de l'aéroport.
     latitude : float
         Latitude du point de mesure météo.
     longitude : float
@@ -66,22 +68,23 @@ class HubAeroportuaire:
 
     nom: str
     code_iata: str
+    code_icao: str
     latitude: float
     longitude: float
 
 
 # Liste fixe des hubs aéroportuaires européens couverts par le projet.
 HUBS_AEROPORTUAIRES: tuple[HubAeroportuaire, ...] = (
-    HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
-    HubAeroportuaire("Londres Heathrow", "LHR", 51.4700, -0.4543),
-    HubAeroportuaire("Francfort", "FRA", 50.0379, 8.5622),
-    HubAeroportuaire("Amsterdam Schiphol", "AMS", 52.3086, 4.7639),
-    HubAeroportuaire("Madrid Barajas", "MAD", 40.4983, -3.5676),
-    HubAeroportuaire("Rome Fiumicino", "FCO", 41.8003, 12.2389),
-    HubAeroportuaire("Istanbul", "IST", 41.2753, 28.7519),
-    HubAeroportuaire("Dublin", "DUB", 53.4213, -6.2701),
-    HubAeroportuaire("Munich", "MUC", 48.3538, 11.7861),
-    HubAeroportuaire("Barcelone", "BCN", 41.2974, 2.0833),
+    HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", "LFPG", 49.0097, 2.5479),
+    HubAeroportuaire("Londres Heathrow", "LHR", "EGLL", 51.4700, -0.4543),
+    HubAeroportuaire("Francfort", "FRA", "EDDF", 50.0379, 8.5622),
+    HubAeroportuaire("Amsterdam Schiphol", "AMS", "EHAM", 52.3086, 4.7639),
+    HubAeroportuaire("Madrid Barajas", "MAD", "LEMD", 40.4983, -3.5676),
+    HubAeroportuaire("Rome Fiumicino", "FCO", "LIRF", 41.8003, 12.2389),
+    HubAeroportuaire("Istanbul", "IST", "LTFM", 41.2753, 28.7519),
+    HubAeroportuaire("Dublin", "DUB", "EIDW", 53.4213, -6.2701),
+    HubAeroportuaire("Munich", "MUC", "EDDM", 48.3538, 11.7861),
+    HubAeroportuaire("Barcelone", "BCN", "LEBL", 41.2974, 2.0833),
 )
 
 
@@ -209,7 +212,7 @@ class OpenWeatherClient:
         dict
             Un dictionnaire contenant un horodatage global UTC de la collecte
             et la liste des résultats par hub, chaque résultat étant enrichi
-            du nom et du code IATA de l'aéroport correspondant.
+            du nom, du code IATA et du code ICAO de l'aéroport correspondant.
 
         Raises
         ------
@@ -228,6 +231,7 @@ class OpenWeatherClient:
                 {
                     "nom_aeroport": hub.nom,
                     "code_iata": hub.code_iata,
+                    "code_icao": hub.code_icao,
                     "meteo": meteo_hub,
                 }
             )

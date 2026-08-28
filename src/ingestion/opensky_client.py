@@ -26,7 +26,7 @@ et l'aéroport de destination.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -48,6 +48,43 @@ DUREE_MAX_INTERVALLE_SECONDES = 7 * 24 * 60 * 60
 # de l'utilisateur correspondent encore à ces valeurs, cela signifie qu'ils n'ont
 # pas été renseignés.
 IDENTIFIANTS_NON_RENSEIGNES = {"", "identifiant_opensky", "mot_de_passe_opensky"}
+
+
+def construire_enveloppe_vols(
+    vols: list[dict],
+    endpoint: str,
+    icao_aeroport: str,
+    debut: int,
+    fin: int,
+) -> dict:
+    """
+    Assemble le JSON brut d'un appel /flights/departure ou /flights/arrival.
+
+    Parameters
+    ----------
+    vols : list[dict]
+        Liste retournée par l'API OpenSky Network.
+    endpoint : str
+        Segment d'URL interrogé, "departure" ou "arrival".
+    icao_aeroport : str
+        Code ICAO de l'aéroport interrogé.
+    debut, fin : int
+        Bornes Unix (secondes) de la fenêtre demandée.
+
+    Returns
+    -------
+    dict
+        Enveloppe avec horodatage UTC, métadonnées d'appel et liste `vols`.
+    """
+    return {
+        "horodatage_collecte": datetime.now(timezone.utc).isoformat(),
+        "endpoint": endpoint,
+        "airport": icao_aeroport,
+        "begin": debut,
+        "end": fin,
+        "nb_vols": len(vols),
+        "vols": vols,
+    }
 
 
 class ErreurAPIOpenSky(Exception):
@@ -291,6 +328,14 @@ class OpenSkyClient:
                 f"Erreur serveur ({reponse.status_code}) sur l'API OpenSky Network."
             )
 
+        if reponse.status_code == 404:
+            self._logger.info(
+                "Aucun vol sur /flights/%s pour %s (HTTP 404) : liste vide.",
+                endpoint,
+                icao_aeroport,
+            )
+            return []
+
         if reponse.status_code != 200:
             self._logger.error(
                 "Réponse HTTP inattendue (code %s) de l'API OpenSky Network.",
@@ -301,7 +346,14 @@ class OpenSkyClient:
             )
 
         self._logger.info("Appel à l'API OpenSky Network réussi (code 200).")
-        return reponse.json()
+        payload = reponse.json()
+        if payload is None:
+            return []
+        if not isinstance(payload, list):
+            raise ErreurAPIOpenSky(
+                "Réponse /flights/* inattendue : une liste de vols était attendue."
+            )
+        return payload
 
     def recuperer_vols_depart(self, icao_aeroport: str, debut: int, fin: int) -> list[dict]:
         """
@@ -379,17 +431,62 @@ class OpenSkyClient:
         """
         return self._recuperer_vols("arrival", icao_aeroport, debut, fin)
 
-    def sauvegarder_donnees_brutes(self, donnees: dict, dossier: str = "data/raw") -> str:
+    def sauvegarder_vols(
+        self,
+        vols: list[dict],
+        endpoint: str,
+        icao_aeroport: str,
+        debut: int,
+        fin: int,
+        dossier: str = "data/raw",
+    ) -> str:
         """
-        Sauvegarde les données brutes récupérées dans un fichier JSON horodaté.
+        Enveloppe une réponse /flights/* et l'écrit dans data/raw/.
+
+        Parameters
+        ----------
+        vols : list[dict]
+            Liste retournée par `recuperer_vols_depart` ou `recuperer_vols_arrivee`.
+        endpoint : str
+            "departure" ou "arrival".
+        icao_aeroport : str
+            Code ICAO de l'aéroport interrogé.
+        debut, fin : int
+            Bornes Unix (secondes) de la fenêtre demandée.
+        dossier : str
+            Dossier de destination.
+
+        Returns
+        -------
+        str
+            Chemin du fichier créé (`opensky_flights_{endpoint}_{icao}_UTC.json`).
+        """
+        enveloppe = construire_enveloppe_vols(
+            vols, endpoint, icao_aeroport, debut, fin
+        )
+        prefixe = f"opensky_flights_{endpoint}_{icao_aeroport}"
+        return self.sauvegarder_donnees_brutes(
+            enveloppe, dossier=dossier, prefixe_fichier=prefixe
+        )
+
+    def sauvegarder_donnees_brutes(
+        self,
+        donnees: dict,
+        dossier: str = "data/raw",
+        prefixe_fichier: str = "opensky",
+    ) -> str:
+        """
+        Sauvegarde les données brutes récupérées dans un fichier JSON horodaté UTC.
 
         Parameters
         ----------
         donnees : dict
             Le contenu JSON à sauvegarder (typiquement le résultat de
-            `recuperer_vols_en_temps_reel`).
+            `recuperer_vols_en_temps_reel` ou l'enveloppe /flights/*).
         dossier : str
             Le dossier de destination. Créé automatiquement s'il n'existe pas.
+        prefixe_fichier : str
+            Préfixe du nom de fichier, avant l'horodatage UTC.
 
         Returns
         -------
@@ -399,8 +496,8 @@ class OpenSkyClient:
         chemin_dossier = Path(dossier)
         chemin_dossier.mkdir(parents=True, exist_ok=True)
 
-        horodatage = datetime.now().strftime("%Y%m%d_%H%M%S")
-        chemin_fichier = chemin_dossier / f"opensky_{horodatage}.json"
+        horodatage = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        chemin_fichier = chemin_dossier / f"{prefixe_fichier}_{horodatage}.json"
 
         try:
             with chemin_fichier.open("w", encoding="utf-8") as fichier:
