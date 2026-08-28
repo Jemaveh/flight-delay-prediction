@@ -2,17 +2,18 @@
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
 > **Statut** : Brouillon — sections techniques pré-remplies, sections réflexives à compléter
-> **Correspond à** : Phase 4 du projet — Déploiement et automatisation
+> **Livrable officiel** : Rendu 3 DataScientest (rapport final). Ce n'est **pas** un rapport ML dédié.
+> **Phases internes** : le déploiement et l'automatisation relèvent surtout de la Phase 4 ; ce document consolide aussi les phases 1 à 3.
 
-> **Rappel méthodologique officiel** : *"Le rapport final ne doit pas être une simple juxtaposition des rendus 1 et 2. Il s'agit d'une version consolidée, mise à jour et finalisée de l'ensemble du projet."* Avant la soutenance, relire et mettre à jour les Rendus 1, 2 et 3 si des choix ont évolué en cours de projet, puis les résumer ici plutôt que de les recopier tels quels.
+> **Rappel méthodologique officiel** : *"Le rapport final ne doit pas être une simple juxtaposition des rendus 1 et 2. Il s'agit d'une version consolidée, mise à jour et finalisée de l'ensemble du projet."* Avant la soutenance, relire et mettre à jour les Rendus 1 et 2, ainsi que le chapitre Machine Learning (Phase 3 interne), puis les résumer ici plutôt que de les recopier tels quels.
 
 ---
 
 ## 1. Synthèse consolidée des rendus précédents
 
 - **Synthèse Rendu 1** (Découverte & exploration) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu1_decouverte_exploration.md`]
-- **Synthèse Rendu 2** (Organisation & modélisation) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu2_organisation_modelisation.md`]
-- **Synthèse Rendu 3** (Machine Learning et Évaluation) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu3_machine_learning.md`]
+- **Synthèse Rendu 2** (Organisation et modélisation **des données**) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu2_organisation_modelisation.md`]
+- **Chapitre Machine Learning** (Phase 3 interne — compétence RNCP bloc 2, consommation du modèle ; ce n'est **pas** un livrable « Rendu 3 ») : [À COMPLÉTER — résumé en 5-10 lignes, avec lien vers le brouillon `docs/rendu3_machine_learning.md`]
 
 ---
 

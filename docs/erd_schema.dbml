@@ -1,0 +1,113 @@
+// Schéma en étoile — Airlines Delay Prediction
+// Source de vérité : src/database/schema.sql (tables réellement créées).
+// Grain de fact_flights : un vol observé OpenSky /flights/departure ou
+// /flights/arrival (icao24 + first_seen + origine), PAS un snapshot /states/all.
+
+
+Project airlines_star {
+  database_type: 'PostgreSQL'
+  Note: 'Étoile : fact_flights au centre. dim_news_sentiment se joint via date_id (pas de FK sentiment_id). ingestion_log est hors étoile.'
+}
+
+Table dim_date {
+  date_id integer [pk, note: 'YYYYMMDD']
+  date date [not null, unique]
+  jour_semaine smallint [not null, note: 'ISO : 1 = lundi ... 7 = dimanche']
+  mois smallint [not null]
+  est_ferie boolean
+}
+
+Table dim_airport {
+  airport_id integer [pk, increment]
+  code_iata char(3) [not null]
+  code_icao char(4) [not null, unique]
+  ville text
+  pays text
+  latitude double
+  longitude double
+}
+
+Table dim_weather {
+  weather_id integer [pk, increment]
+  airport_id integer [not null]
+  date_id integer [not null]
+  horodatage_observation timestamptz [not null]
+  temperature_celsius double
+  feels_like_celsius double
+  humidity smallint
+  pressure integer
+  wind_speed double
+  wind_gust double
+  rain_1h double
+  visibility integer
+  description_ciel text
+
+  indexes {
+    (airport_id, horodatage_observation) [unique, name: 'uq_dim_weather_observation']
+    airport_id [name: 'idx_dim_weather_airport_id']
+    date_id [name: 'idx_dim_weather_date_id']
+  }
+}
+
+Table dim_news_sentiment {
+  sentiment_id integer [pk, increment]
+  date_id integer [not null, unique, note: 'une ligne par jour ; score_sentiment NULL tant que BERT n a pas tourné']
+  nb_articles integer [not null]
+  mots_cles text
+  score_sentiment double
+
+  indexes {
+    date_id [name: 'idx_dim_news_sentiment_date_id']
+  }
+}
+
+Table fact_flights [note: 'Grain : un vol observé /flights/* — pas /states/all. retard_minutes NULL si le proxy n est pas calculable.'] {
+  flight_id integer [pk, increment]
+  icao24 varchar(12) [not null]
+  callsign varchar(16)
+  first_seen timestamptz [not null]
+  last_seen timestamptz
+  est_departure_airport varchar(4)
+  est_arrival_airport varchar(4)
+  date_id integer [not null]
+  airport_origin_id integer [null, note: 'NULL si ICAO hors des 10 hubs']
+  airport_dest_id integer [null, note: 'NULL si ICAO hors des 10 hubs ou destination inconnue']
+  weather_origin_id integer [null, note: 'NULL hors hub ou hors fenetre temporelle']
+  weather_dest_id integer [null, note: 'NULL hors hub ou hors fenetre temporelle']
+  retard_minutes double
+
+  indexes {
+    date_id [name: 'idx_fact_flights_date_id']
+    airport_origin_id [name: 'idx_fact_flights_airport_origin_id']
+    airport_dest_id [name: 'idx_fact_flights_airport_dest_id']
+    weather_origin_id [name: 'idx_fact_flights_weather_origin_id']
+    weather_dest_id [name: 'idx_fact_flights_weather_dest_id']
+  }
+}
+
+Table ingestion_log [note: 'Journal technique des chargements. Hors étoile : aucune FK vers les faits ni les dimensions.'] {
+  log_id integer [pk, increment]
+  source text [not null]
+  fichier_source text
+  horodatage_debut timestamptz [not null]
+  horodatage_fin timestamptz
+  lignes_lues integer
+  lignes_rejetees integer
+  lignes_inserees integer
+}
+
+// Une seule Ref par couple (pas de ref: inline) — sinon dbdiagram duplique les warnings.
+// DBML 9+ (https://dbml.dbdiagram.io/docs/#relationships) :
+//   >   many-to-one, FK NOT NULL
+//   >?  many-to-optional-one, FK nullable (côté référencé optionnel)
+//   -   one-to-one (UNIQUE) ; 2e colonne = FK
+Ref fk_fact_flights_date_id: fact_flights.date_id > dim_date.date_id
+Ref fk_fact_flights_airport_origin_id: fact_flights.airport_origin_id >? dim_airport.airport_id
+Ref fk_fact_flights_airport_dest_id: fact_flights.airport_dest_id >? dim_airport.airport_id
+Ref fk_fact_flights_weather_origin_id: fact_flights.weather_origin_id >? dim_weather.weather_id
+Ref fk_fact_flights_weather_dest_id: fact_flights.weather_dest_id >? dim_weather.weather_id
+
+// FK des dimensions (dim_weather porte aussi un aéroport et un jour)
+Ref fk_dim_weather_airport_id: dim_weather.airport_id > dim_airport.airport_id
+Ref fk_dim_weather_date_id: dim_weather.date_id > dim_date.date_id
+Ref fk_dim_news_sentiment_date_id: dim_date.date_id - dim_news_sentiment.date_id

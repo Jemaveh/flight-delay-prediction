@@ -1,10 +1,12 @@
-# Rendu 3 — Machine Learning et Évaluation
+# Chapitre Machine Learning — brouillon pour le rapport final
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
 > **Statut** : Brouillon — sections techniques pré-remplies, sections réflexives à compléter
-> **Correspond à** : Phase 3 du projet — Machine Learning et Évaluation
+> **Phase interne** : Phase 3 (Machine Learning). Ce fichier n'est **pas** le livrable officiel « Rendu 3 ».
 
-Ce rendu documente la construction du modèle de prédiction de retard à partir du schéma de données mis en place au Rendu 2. Il démontre que le pipeline de données construit dans les Rendus 1 et 2 est réellement exploitable pour un cas d'usage concret, conformément à l'objectif de mise à disposition des données énoncé dès le Rendu 1.
+J'ai rédigé ce document comme **chapitre ML** (justification d'algorithme, features, évaluation) pour le rapport final et la compétence RNCP bloc 2 — pas comme le livrable « Rendu 3 Consommation, déploiement et automatisation ». Ce livrable officiel vit dans `docs/rapport_final.md`. Le nom de fichier `rendu3_machine_learning.md` est trompeur : je ne dois pas le présenter à l'oral comme « mon Rendu 3 ».
+
+Ce chapitre documente la construction du modèle de prédiction de retard à partir du schéma de données mis en place au Rendu 2. Il démontre que le pipeline des phases 1 et 2 est exploitable pour un cas d'usage concret, conformément à l'objectif de mise à disposition des données énoncé dès le Rendu 1.
 
 ---
 
