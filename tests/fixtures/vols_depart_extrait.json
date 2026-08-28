@@ -1,0 +1,42 @@
+[
+  {
+    "icao24": "abc123",
+    "firstSeen": 1700000000,
+    "lastSeen": 1700003600,
+    "estDepartureAirport": "LFPG",
+    "estArrivalAirport": "EGLL",
+    "callsign": "AFR123 "
+  },
+  {
+    "icao24": "abc123",
+    "firstSeen": 1700000000,
+    "lastSeen": 1700003600,
+    "estDepartureAirport": "LFPG",
+    "estArrivalAirport": "EGLL",
+    "callsign": "AFR123"
+  },
+  {
+    "icao24": "def456",
+    "firstSeen": 1700001000,
+    "lastSeen": 1700002000,
+    "estDepartureAirport": "LFPG",
+    "estArrivalAirport": null,
+    "callsign": "AFR456"
+  },
+  {
+    "icao24": "ghi789",
+    "firstSeen": 1700003000,
+    "lastSeen": 1700002000,
+    "estDepartureAirport": "LFPG",
+    "estArrivalAirport": "EDDF",
+    "callsign": "DLH789"
+  },
+  {
+    "icao24": "jkl012",
+    "firstSeen": 1700004000,
+    "lastSeen": 1700005000,
+    "estDepartureAirport": null,
+    "estArrivalAirport": null,
+    "callsign": "   "
+  }
+]

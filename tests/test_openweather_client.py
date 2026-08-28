@@ -114,8 +114,8 @@ def test_recuperer_meteo_hubs_aeroportuaires_boucle_sur_chaque_hub(mocker) -> No
     )
 
     hubs_test = (
-        HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
-        HubAeroportuaire("Londres Heathrow", "LHR", 51.4700, -0.4543),
+        HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", "LFPG", 49.0097, 2.5479),
+        HubAeroportuaire("Londres Heathrow", "LHR", "EGLL", 51.4700, -0.4543),
     )
 
     client = OpenWeatherClient()
@@ -125,6 +125,7 @@ def test_recuperer_meteo_hubs_aeroportuaires_boucle_sur_chaque_hub(mocker) -> No
     assert "horodatage_collecte" in resultat
     assert len(resultat["hubs"]) == 2
     assert resultat["hubs"][0]["code_iata"] == "CDG"
+    assert resultat["hubs"][0]["code_icao"] == "LFPG"
     assert resultat["hubs"][1]["code_iata"] == "LHR"
     assert resultat["hubs"][0]["meteo"] == {"main": {"temp": 15.0}}
 
@@ -140,7 +141,7 @@ def test_recuperer_meteo_hubs_aeroportuaires_horodatage_collecte_est_utc(mocker)
     )
 
     hubs_test = (
-        HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", 49.0097, 2.5479),
+        HubAeroportuaire("Paris Charles-de-Gaulle", "CDG", "LFPG", 49.0097, 2.5479),
     )
     client = OpenWeatherClient()
     resultat = client.recuperer_meteo_hubs_aeroportuaires(hubs=hubs_test)

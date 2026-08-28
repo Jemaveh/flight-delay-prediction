@@ -16,7 +16,11 @@ from pathlib import Path
 import pytest
 import requests
 
-from src.ingestion.opensky_client import ErreurAPIOpenSky, OpenSkyClient
+from src.ingestion.opensky_client import (
+    ErreurAPIOpenSky,
+    OpenSkyClient,
+    construire_enveloppe_vols,
+)
 
 
 def _construire_reponse_mock(mocker, status_code: int, contenu_json: dict | None = None):
@@ -218,3 +222,63 @@ def test_sauvegarder_donnees_brutes_cree_un_fichier_avec_le_bon_contenu(
 
     contenu_relu = json.loads(chemin_fichier.read_text(encoding="utf-8"))
     assert contenu_relu == donnees
+
+
+def test_recuperer_vols_depart_retourne_liste_vide_sur_404(mocker) -> None:
+    """
+    Vérifie qu'un HTTP 404 sur /flights/departure est traité comme une liste
+    vide, et non comme une erreur.
+    """
+    reponse_mock = _construire_reponse_mock(mocker, 404)
+    mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
+    )
+
+    client = OpenSkyClient()
+    resultat = client.recuperer_vols_depart(
+        icao_aeroport="LFPG", debut=1000, fin=2000
+    )
+
+    assert resultat == []
+
+
+def test_construire_enveloppe_vols_porte_la_liste_et_les_metadonnees() -> None:
+    """
+    Vérifie l'enveloppe JSON des vols : endpoint, aéroport, bornes, effectif.
+    """
+    vols = [{"icao24": "abc123"}]
+    enveloppe = construire_enveloppe_vols(
+        vols, endpoint="departure", icao_aeroport="LFPG", debut=10, fin=20
+    )
+
+    assert enveloppe["endpoint"] == "departure"
+    assert enveloppe["airport"] == "LFPG"
+    assert enveloppe["begin"] == 10
+    assert enveloppe["end"] == 20
+    assert enveloppe["nb_vols"] == 1
+    assert enveloppe["vols"] == vols
+    assert enveloppe["horodatage_collecte"].endswith("+00:00") or "Z" in enveloppe[
+        "horodatage_collecte"
+    ]
+
+
+def test_sauvegarder_vols_utilise_le_prefixe_flights(tmp_path: Path) -> None:
+    """
+    Vérifie que sauvegarder_vols écrit un fichier opensky_flights_* contenant
+    l'enveloppe, pas un snapshot /states/all.
+    """
+    client = OpenSkyClient()
+    chemin = client.sauvegarder_vols(
+        [{"icao24": "abc123"}],
+        endpoint="arrival",
+        icao_aeroport="EGLL",
+        debut=1,
+        fin=2,
+        dossier=str(tmp_path),
+    )
+    fichier = Path(chemin)
+    assert fichier.name.startswith("opensky_flights_arrival_EGLL_")
+    contenu = json.loads(fichier.read_text(encoding="utf-8"))
+    assert contenu["airport"] == "EGLL"
+    assert contenu["endpoint"] == "arrival"
+    assert contenu["nb_vols"] == 1

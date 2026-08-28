@@ -1,0 +1,49 @@
+{
+  "horodatage_collecte": "2026-08-25T15:50:50.575960+00:00",
+  "requetes": [
+    {
+      "mots_cles": "flight delay",
+      "langue_requete": "en",
+      "resultat": {
+        "status": "ok",
+        "articles": [
+          {
+            "title": "Airport strike delays flights",
+            "description": "A strike caused delays.",
+            "url": "https://example.com/article-1",
+            "publishedAt": "2026-08-23T08:00:00Z",
+            "content": "Texte tronqué [+200 chars]"
+          },
+          {
+            "title": "Airport strike delays flights",
+            "description": "Same story, other URL.",
+            "url": "https://aggregator.example.com/article-1",
+            "publishedAt": "2026-08-23T09:00:00Z",
+            "content": "Encore tronqué [+180 chars]"
+          },
+          {
+            "title": "Unrelated duplicate URL",
+            "description": "First copy.",
+            "url": "https://example.com/meme-url",
+            "publishedAt": "2026-08-22T10:00:00Z",
+            "content": "x"
+          },
+          {
+            "title": "Unrelated duplicate URL again",
+            "description": "Second copy.",
+            "url": "https://example.com/meme-url",
+            "publishedAt": "2026-08-22T11:00:00Z",
+            "content": "y"
+          },
+          {
+            "title": "Unique air traffic news",
+            "description": "A distinct article.",
+            "url": "https://example.com/unique",
+            "publishedAt": "2026-08-24T12:00:00Z",
+            "content": "z"
+          }
+        ]
+      }
+    }
+  ]
+}
