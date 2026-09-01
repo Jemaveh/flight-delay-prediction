@@ -26,6 +26,8 @@ PAUSE_ENTRE_APPELS_SECONDES = 9.0
 FENETRE_VOLS_SECONDES = 24 * 60 * 60
 ENDPOINTS_VOLS = ("departure", "arrival")
 DOSSIER_RAW_DEFAUT = RACINE_PROJET / "data" / "raw"
+ATTENTE_429_DEFAUT_SECONDES = 60.0
+NB_REESSAIS_429 = 1
 # Hubs encore absents après la salve du 26/08 après-midi (429 sur LTFM).
 HUBS_PRIORITAIRES = ("LTFM", "EIDW", "EDDM", "LEBL")
 
@@ -93,6 +95,14 @@ def construire_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Ne pas interroger OpenWeather (vols seulement).",
     )
+    parser.add_argument(
+        "--reprendre",
+        action="store_true",
+        help=(
+            "Saute les endpoints déjà présents en JSON dans data/raw/ "
+            "(opensky_flights_{departure|arrival}_{ICAO}_*.json)."
+        ),
+    )
     return parser
 
 
@@ -104,6 +114,44 @@ def _est_authentification_refusee(erreur: Exception) -> bool:
     return "401" in str(erreur)
 
 
+def _attente_apres_429(erreur: Exception) -> float:
+    attente = getattr(erreur, "retry_after_secondes", None)
+    if isinstance(attente, (int, float)) and attente > 0:
+        return float(attente)
+    return ATTENTE_429_DEFAUT_SECONDES
+
+
+def endpoints_deja_presents(dossier: str | Path) -> set[tuple[str, str]]:
+    """
+    Repère les couples (endpoint, ICAO) déjà écrits en JSON dans le dossier.
+
+    Returns
+    -------
+    set[tuple[str, str]]
+        Couples (departure|arrival, code ICAO) trouvés dans les noms de fichiers.
+    """
+    presents: set[tuple[str, str]] = set()
+    chemin_dossier = Path(dossier)
+    if not chemin_dossier.is_dir():
+        return presents
+    for chemin in chemin_dossier.glob("opensky_flights_*.json"):
+        parties = chemin.stem.split("_")
+        if len(parties) < 4:
+            continue
+        endpoint, icao = parties[2], parties[3]
+        if endpoint in ENDPOINTS_VOLS:
+            presents.add((endpoint, icao))
+    return presents
+
+
+def _code_hub_suivant(
+    hubs: tuple[HubAeroportuaire, ...], index_courant: int
+) -> str | None:
+    if index_courant + 1 < len(hubs):
+        return hubs[index_courant + 1].code_icao
+    return None
+
+
 def collecter_vols_hubs(
     client: OpenSkyClient | None = None,
     hubs: tuple[HubAeroportuaire, ...] = HUBS_AEROPORTUAIRES,
@@ -111,19 +159,22 @@ def collecter_vols_hubs(
     fin: int | None = None,
     pause_secondes: float = PAUSE_ENTRE_APPELS_SECONDES,
     dossier: str | Path | None = None,
+    reprendre: bool = False,
 ) -> dict:
     """
     Interroge /flights/departure puis /flights/arrival pour chaque hub ICAO.
 
-    Une pause sépare les appels. Un HTTP 429 interrompt la boucle ; les JSON
-    déjà écrits restent en place. Un HTTP 404 est une liste vide (géré par le
-    module d'ingestion).
+    Une pause sépare les appels. Un HTTP 429 déclenche un backoff (Retry-After
+    ou 60 s) et un réessai ; si le quota tient, le hub courant est abandonné
+    et la boucle passe au hub suivant. Un HTTP 404 est une liste vide (géré
+    par le module d'ingestion). ``reprendre=True`` saute les endpoints déjà
+    présents en JSON dans le dossier.
 
     Returns
     -------
     dict
         Fenêtre Unix, liste d'appels (hub, endpoint, statut, nb_vols, fichier)
-        et drapeau d'interruption 429.
+        et drapeau ``interrompu_429`` (au moins un 429 après réessais).
     """
     client_opensky = client if client is not None else OpenSkyClient()
     dossier_raw = Path(dossier) if dossier is not None else DOSSIER_RAW_DEFAUT
@@ -135,114 +186,168 @@ def collecter_vols_hubs(
 
     appels: list[dict] = []
     interrompu_429 = False
-    premier = True
+    premier_appel_reseau = True
+    presents = endpoints_deja_presents(dossier_raw) if reprendre else set()
 
-    for hub in hubs:
+    for index_hub, hub in enumerate(hubs):
+        icao = hub.code_icao
+        if reprendre and all((ep, icao) in presents for ep in ENDPOINTS_VOLS):
+            logger.info(
+                "Reprise : %s déjà présent en JSON (departure et arrival), ignoré.",
+                icao,
+            )
+            continue
+
+        passer_ce_hub = False
         for endpoint in ENDPOINTS_VOLS:
-            if interrompu_429:
+            if passer_ce_hub:
                 break
-            if not premier:
-                time.sleep(pause_secondes)
-            premier = False
+            if reprendre and (endpoint, icao) in presents:
+                logger.info(
+                    "Reprise : /flights/%s %s déjà présent en JSON, ignoré.",
+                    endpoint,
+                    icao,
+                )
+                continue
 
-            icao = hub.code_icao
+            if not premier_appel_reseau:
+                time.sleep(pause_secondes)
+            premier_appel_reseau = False
+
             logger.info(
                 "Collecte /flights/%s pour %s (%s).",
                 endpoint,
                 hub.nom,
                 icao,
             )
-            try:
-                if endpoint == "departure":
-                    vols = client_opensky.recuperer_vols_depart(
-                        icao_aeroport=icao, debut=instant_debut, fin=instant_fin
-                    )
-                else:
-                    vols = client_opensky.recuperer_vols_arrivee(
-                        icao_aeroport=icao, debut=instant_debut, fin=instant_fin
-                    )
-                chemin = client_opensky.sauvegarder_vols(
-                    vols,
-                    endpoint=endpoint,
-                    icao_aeroport=icao,
-                    debut=instant_debut,
-                    fin=instant_fin,
-                    dossier=str(dossier_raw),
-                )
-                appels.append(
-                    {
-                        "hub": icao,
-                        "endpoint": endpoint,
-                        "statut": "OK",
-                        "nb_vols": len(vols),
-                        "fichier": chemin_relatif_projet(chemin),
-                    }
-                )
-                logger.info(
-                    "OK /flights/%s %s : %s vol(s) → '%s'.",
-                    endpoint,
-                    icao,
-                    len(vols),
-                    chemin_relatif_projet(chemin),
-                )
-            except ErreurAPIOpenSky as erreur:
-                if _est_quota_depasse(erreur):
-                    interrompu_429 = True
+
+            vols: list[dict] | None = None
+            reessais_faits = 0
+            while True:
+                try:
+                    if endpoint == "departure":
+                        vols = client_opensky.recuperer_vols_depart(
+                            icao_aeroport=icao, debut=instant_debut, fin=instant_fin
+                        )
+                    else:
+                        vols = client_opensky.recuperer_vols_arrivee(
+                            icao_aeroport=icao, debut=instant_debut, fin=instant_fin
+                        )
+                    break
+                except ErreurAPIOpenSky as erreur:
+                    if _est_quota_depasse(erreur):
+                        attente = _attente_apres_429(erreur)
+                        if reessais_faits < NB_REESSAIS_429:
+                            reessais_faits += 1
+                            logger.warning(
+                                "Quota OpenSky (429) sur /flights/%s %s : "
+                                "attente %.0f s avant réessai %s/%s.",
+                                endpoint,
+                                icao,
+                                attente,
+                                reessais_faits,
+                                NB_REESSAIS_429,
+                            )
+                            time.sleep(attente)
+                            continue
+                        interrompu_429 = True
+                        passer_ce_hub = True
+                        appels.append(
+                            {
+                                "hub": icao,
+                                "endpoint": endpoint,
+                                "statut": "429",
+                                "nb_vols": 0,
+                                "fichier": None,
+                            }
+                        )
+                        hub_suivant = _code_hub_suivant(hubs, index_hub)
+                        if hub_suivant is not None:
+                            logger.error(
+                                "Quota OpenSky (429) sur /flights/%s %s : "
+                                "réessais épuisés, je passe à %s. "
+                                "Les fichiers déjà sauvegardés restent "
+                                "exploitables par l'ETL.",
+                                endpoint,
+                                icao,
+                                hub_suivant,
+                            )
+                        else:
+                            logger.error(
+                                "Quota OpenSky (429) sur /flights/%s %s : "
+                                "réessais épuisés, aucun hub suivant. "
+                                "Les fichiers déjà sauvegardés restent "
+                                "exploitables par l'ETL.",
+                                endpoint,
+                                icao,
+                            )
+                        break
+                    if _est_authentification_refusee(erreur):
+                        appels.append(
+                            {
+                                "hub": icao,
+                                "endpoint": endpoint,
+                                "statut": "401",
+                                "nb_vols": 0,
+                                "fichier": None,
+                            }
+                        )
+                        logger.error(
+                            "Authentification OpenSky refusée (401) : arrêt de la "
+                            "collecte vols."
+                        )
+                        return {
+                            "debut": instant_debut,
+                            "fin": instant_fin,
+                            "interrompu_429": interrompu_429,
+                            "appels": appels,
+                        }
                     appels.append(
                         {
                             "hub": icao,
                             "endpoint": endpoint,
-                            "statut": "429",
+                            "statut": "KO",
                             "nb_vols": 0,
                             "fichier": None,
+                            "detail": str(erreur),
                         }
                     )
                     logger.error(
-                        "Quota OpenSky (429) sur /flights/%s %s : "
-                        "arrêt de la collecte vols. Les fichiers déjà "
-                        "sauvegardés restent exploitables par l'ETL.",
+                        "Échec /flights/%s %s : %s. Poursuite sur l'appel suivant.",
                         endpoint,
                         icao,
+                        erreur,
                     )
+                    vols = None
                     break
-                if _est_authentification_refusee(erreur):
-                    appels.append(
-                        {
-                            "hub": icao,
-                            "endpoint": endpoint,
-                            "statut": "401",
-                            "nb_vols": 0,
-                            "fichier": None,
-                        }
-                    )
-                    logger.error(
-                        "Authentification OpenSky refusée (401) : arrêt de la "
-                        "collecte vols."
-                    )
-                    return {
-                        "debut": instant_debut,
-                        "fin": instant_fin,
-                        "interrompu_429": False,
-                        "appels": appels,
-                    }
-                appels.append(
-                    {
-                        "hub": icao,
-                        "endpoint": endpoint,
-                        "statut": "KO",
-                        "nb_vols": 0,
-                        "fichier": None,
-                        "detail": str(erreur),
-                    }
-                )
-                logger.error(
-                    "Échec /flights/%s %s : %s. Poursuite sur l'appel suivant.",
-                    endpoint,
-                    icao,
-                    erreur,
-                )
-        if interrompu_429:
-            break
+
+            if passer_ce_hub or vols is None:
+                continue
+
+            chemin = client_opensky.sauvegarder_vols(
+                vols,
+                endpoint=endpoint,
+                icao_aeroport=icao,
+                debut=instant_debut,
+                fin=instant_fin,
+                dossier=str(dossier_raw),
+            )
+            appels.append(
+                {
+                    "hub": icao,
+                    "endpoint": endpoint,
+                    "statut": "OK",
+                    "nb_vols": len(vols),
+                    "fichier": chemin_relatif_projet(chemin),
+                }
+            )
+            logger.info(
+                "OK /flights/%s %s : %s vol(s) → '%s'.",
+                endpoint,
+                icao,
+                len(vols),
+                chemin_relatif_projet(chemin),
+            )
 
     return {
         "debut": instant_debut,
@@ -302,6 +407,7 @@ def executer_collecte(
     pause_secondes: float = PAUSE_ENTRE_APPELS_SECONDES,
     dossier: str | Path | None = None,
     avec_meteo: bool = True,
+    reprendre: bool = False,
 ) -> dict:
     """
     Enchaîne la collecte vols multi-hubs puis, dans la même session, la météo.
@@ -320,6 +426,7 @@ def executer_collecte(
         hubs=hubs,
         pause_secondes=pause_secondes,
         dossier=dossier,
+        reprendre=reprendre,
     )
     rapport_meteo: dict | None = None
     if avec_meteo:
@@ -354,6 +461,7 @@ def main(argv: list[str] | None = None) -> dict:
         hubs=hubs_vols,
         pause_secondes=args.pause,
         avec_meteo=not args.sans_meteo,
+        reprendre=args.reprendre,
     )
 
 

@@ -87,10 +87,45 @@ def construire_enveloppe_vols(
     }
 
 
+def extraire_retry_after_secondes(reponse: object) -> float | None:
+    """
+    Lit l'en-tête Retry-After d'une réponse HTTP, en secondes.
+
+    Returns
+    -------
+    float | None
+        Délai indiqué par l'API, ou None s'il est absent ou non numérique.
+    """
+    headers = getattr(reponse, "headers", None)
+    getter = getattr(headers, "get", None) if headers is not None else None
+    if not callable(getter):
+        return None
+    brut = getter("Retry-After")
+    if brut is None:
+        brut = getter("retry-after")
+    if not isinstance(brut, (str, int, float)):
+        return None
+    try:
+        valeur = float(str(brut).strip())
+    except ValueError:
+        return None
+    if valeur <= 0:
+        return None
+    return valeur
+
+
 class ErreurAPIOpenSky(Exception):
     """
     Exception levée lorsque l'appel à l'API OpenSky Network échoue.
     """
+
+    def __init__(
+        self,
+        message: str,
+        retry_after_secondes: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after_secondes = retry_after_secondes
 
 
 class OpenSkyClient:
@@ -200,10 +235,21 @@ class OpenSkyClient:
             raise ErreurAPIOpenSky("Authentification refusée (401) par l'API OpenSky Network.")
 
         if reponse.status_code == 429:
-            self._logger.error(
-                "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+            attente = extraire_retry_after_secondes(reponse)
+            if attente is not None:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network "
+                    "(Retry-After : %.0f s).",
+                    attente,
+                )
+            else:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+                )
+            raise ErreurAPIOpenSky(
+                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
+                retry_after_secondes=attente,
             )
-            raise ErreurAPIOpenSky("Quota d'appels dépassé (429) sur l'API OpenSky Network.")
 
         if reponse.status_code >= 500:
             self._logger.error(
@@ -315,10 +361,21 @@ class OpenSkyClient:
             raise ErreurAPIOpenSky("Authentification refusée (401) par l'API OpenSky Network.")
 
         if reponse.status_code == 429:
-            self._logger.error(
-                "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+            attente = extraire_retry_after_secondes(reponse)
+            if attente is not None:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network "
+                    "(Retry-After : %.0f s).",
+                    attente,
+                )
+            else:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+                )
+            raise ErreurAPIOpenSky(
+                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
+                retry_after_secondes=attente,
             )
-            raise ErreurAPIOpenSky("Quota d'appels dépassé (429) sur l'API OpenSky Network.")
 
         if reponse.status_code >= 500:
             self._logger.error(

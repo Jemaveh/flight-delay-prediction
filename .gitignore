@@ -28,6 +28,8 @@ data/profiling_reports/*.html
 # === Modèles entraînés (Phase 3) ===
 *.joblib
 *.pkl
+models/*
+!models/.gitkeep
 
 # === Notebooks : checkpoints Jupyter ===
 .ipynb_checkpoints/

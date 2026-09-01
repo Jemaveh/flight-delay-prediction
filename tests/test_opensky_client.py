@@ -20,6 +20,7 @@ from src.ingestion.opensky_client import (
     ErreurAPIOpenSky,
     OpenSkyClient,
     construire_enveloppe_vols,
+    extraire_retry_after_secondes,
 )
 
 
@@ -141,14 +142,27 @@ def test_recuperer_vols_depart_leve_exception_sur_quota_depasse(mocker) -> None:
     /flights/departure est bien transformée en ErreurAPIOpenSky.
     """
     reponse_mock = _construire_reponse_mock(mocker, 429)
+    reponse_mock.headers = {"Retry-After": "45"}
     mocker.patch(
         "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
     )
 
     client = OpenSkyClient()
 
-    with pytest.raises(ErreurAPIOpenSky):
+    with pytest.raises(ErreurAPIOpenSky) as captured:
         client.recuperer_vols_depart(icao_aeroport="LFPG", debut=1000, fin=2000)
+    assert captured.value.retry_after_secondes == 45.0
+
+
+def test_extraire_retry_after_secondes_absent_ou_invalide(mocker) -> None:
+    """Vérifie que Retry-After absent ou non numérique donne None."""
+    sans_entete = _construire_reponse_mock(mocker, 429)
+    sans_entete.headers = {}
+    assert extraire_retry_after_secondes(sans_entete) is None
+
+    http_date = _construire_reponse_mock(mocker, 429)
+    http_date.headers = {"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}
+    assert extraire_retry_after_secondes(http_date) is None
 
 
 def test_recuperer_vols_arrivee_leve_exception_sur_timeout(mocker) -> None:

@@ -2,10 +2,10 @@
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
 > **Statut** : Brouillon — sections techniques pré-remplies, sections réflexives à compléter
-> **Livrable officiel** : Rendu 3 DataScientest (rapport final). Ce n'est **pas** un rapport ML dédié.
+> **Livrable** : Rapport final — consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
 > **Phases internes** : le déploiement et l'automatisation relèvent surtout de la Phase 4 ; ce document consolide aussi les phases 1 à 3.
 
-> **Rappel méthodologique officiel** : *"Le rapport final ne doit pas être une simple juxtaposition des rendus 1 et 2. Il s'agit d'une version consolidée, mise à jour et finalisée de l'ensemble du projet."* Avant la soutenance, relire et mettre à jour les Rendus 1 et 2, ainsi que le chapitre Machine Learning (Phase 3 interne), puis les résumer ici plutôt que de les recopier tels quels.
+> **Rappel méthodologique** : le rapport final n'est pas une juxtaposition des Rendus 1, 2 et 3. Avant la soutenance, relire et mettre à jour ces trois rendus, puis les résumer ici plutôt que de les recopier tels quels.
 
 ---
 
@@ -13,7 +13,7 @@
 
 - **Synthèse Rendu 1** (Découverte & exploration) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu1_decouverte_exploration.md`]
 - **Synthèse Rendu 2** (Organisation et modélisation **des données**) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu2_organisation_modelisation.md`]
-- **Chapitre Machine Learning** (Phase 3 interne — compétence RNCP bloc 2, consommation du modèle ; ce n'est **pas** un livrable « Rendu 3 ») : [À COMPLÉTER — résumé en 5-10 lignes, avec lien vers le brouillon `docs/rendu3_machine_learning.md`]
+- **Synthèse Rendu 3** (Machine Learning) : [À COMPLÉTER — résumé en 5-10 lignes, avec lien vers `docs/rendu3_machine_learning.md`]
 
 ---
 

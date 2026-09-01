@@ -5,13 +5,17 @@ Tests unitaires de l'orchestration de collecte multi-hubs
 Aucun appel réseau : les modules d'ingestion sont simulés.
 """
 
+from pathlib import Path
+
 import pytest
 
 from src.ingestion.opensky_client import ErreurAPIOpenSky
 from src.ingestion.openweather_client import HUBS_AEROPORTUAIRES, HubAeroportuaire
 from src.processing.collecter_hubs import (
+    ATTENTE_429_DEFAUT_SECONDES,
     collecter_meteo_hubs,
     collecter_vols_hubs,
+    endpoints_deja_presents,
     executer_collecte,
     hubs_depuis_codes,
     main,
@@ -104,15 +108,18 @@ def test_collecter_vols_hubs_boucle_depart_et_arrivee(mocker) -> None:
     mock_sleep.assert_called_with(3)
 
 
-def test_collecter_vols_hubs_s_arrete_sur_429(mocker) -> None:
+def test_collecter_vols_hubs_continue_apres_429_sur_le_hub_suivant(mocker) -> None:
     """
-    Vérifie qu'un HTTP 429 interrompt la boucle après les appels déjà sauvés.
+    Vérifie qu'un HTTP 429 sur le premier hub n'empêche pas d'appeler le second.
     """
-    mocker.patch("src.processing.collecter_hubs.time.sleep")
+    mock_sleep = mocker.patch("src.processing.collecter_hubs.time.sleep")
     client = _ClientOpenSkyFictif(
-        {("departure", "LFPG"): [{"icao24": "a"}]},
+        {
+            ("departure", "EGLL"): [{"icao24": "c"}],
+            ("arrival", "EGLL"): [{"icao24": "d"}],
+        },
         erreurs={
-            ("arrival", "LFPG"): ErreurAPIOpenSky(
+            ("departure", "LFPG"): ErreurAPIOpenSky(
                 "Quota d'appels dépassé (429) sur l'API OpenSky Network."
             )
         },
@@ -128,10 +135,15 @@ def test_collecter_vols_hubs_s_arrete_sur_429(mocker) -> None:
     )
 
     assert rapport["interrompu_429"] is True
-    assert rapport["appels"][0]["statut"] == "OK"
-    assert rapport["appels"][1]["statut"] == "429"
-    assert len(rapport["appels"]) == 2
-    assert ("departure", "EGLL") not in client.appels
+    assert rapport["appels"][0]["hub"] == "LFPG"
+    assert rapport["appels"][0]["statut"] == "429"
+    assert [a["hub"] for a in rapport["appels"][1:]] == ["EGLL", "EGLL"]
+    assert [a["statut"] for a in rapport["appels"][1:]] == ["OK", "OK"]
+    assert ("arrival", "LFPG") not in client.appels
+    assert client.appels.count(("departure", "LFPG")) == 2
+    assert ("departure", "EGLL") in client.appels
+    assert ("arrival", "EGLL") in client.appels
+    assert mock_sleep.call_args_list[0].args == (ATTENTE_429_DEFAUT_SECONDES,)
 
 
 def test_executer_collecte_rappelle_la_meteo_apres_un_429(mocker) -> None:
@@ -249,3 +261,94 @@ def test_main_cli_filtre_les_hubs_opensky(mocker) -> None:
     ]
     assert kwargs["pause_secondes"] == 9.0
     assert kwargs["avec_meteo"] is True
+    assert kwargs["reprendre"] is False
+
+
+def test_collecter_vols_hubs_honore_retry_after(mocker) -> None:
+    """Vérifie que le backoff 429 utilise Retry-After plutôt que le défaut 60 s."""
+    mock_sleep = mocker.patch("src.processing.collecter_hubs.time.sleep")
+    client = _ClientOpenSkyFictif(
+        {("departure", "EGLL"): [], ("arrival", "EGLL"): []},
+        erreurs={
+            ("departure", "LFPG"): ErreurAPIOpenSky(
+                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
+                retry_after_secondes=15,
+            )
+        },
+    )
+
+    collecter_vols_hubs(
+        client=client,
+        hubs=HUBS_TEST,
+        debut=1000,
+        fin=2000,
+        pause_secondes=0,
+        dossier="data/raw",
+    )
+
+    assert mock_sleep.call_args_list[0].args == (15.0,)
+    assert ("departure", "EGLL") in client.appels
+
+
+def test_endpoints_deja_presents_lit_les_json(tmp_path: Path) -> None:
+    """Vérifie le scan des fichiers opensky_flights_* déjà écrits."""
+    (tmp_path / "opensky_flights_departure_LFPG_20260826_145520.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (tmp_path / "opensky_flights_arrival_LFPG_20260826_145524.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (tmp_path / "opensky_flights_departure_EGLL_20260826_145527.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    assert endpoints_deja_presents(tmp_path) == {
+        ("departure", "LFPG"),
+        ("arrival", "LFPG"),
+        ("departure", "EGLL"),
+    }
+
+
+def test_collecter_vols_hubs_reprendre_saute_les_icao_deja_presents(
+    mocker, tmp_path: Path
+) -> None:
+    """Vérifie que --reprendre n'interroge pas un hub déjà complet en JSON."""
+    mocker.patch("src.processing.collecter_hubs.time.sleep")
+    (tmp_path / "opensky_flights_departure_LFPG_20260826_145520.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (tmp_path / "opensky_flights_arrival_LFPG_20260826_145524.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    client = _ClientOpenSkyFictif(
+        {
+            ("departure", "EGLL"): [{"icao24": "c"}],
+            ("arrival", "EGLL"): [],
+        }
+    )
+
+    rapport = collecter_vols_hubs(
+        client=client,
+        hubs=HUBS_TEST,
+        debut=1000,
+        fin=2000,
+        pause_secondes=0,
+        dossier=tmp_path,
+        reprendre=True,
+    )
+
+    assert ("departure", "LFPG") not in client.appels
+    assert ("arrival", "LFPG") not in client.appels
+    assert client.appels == [("departure", "EGLL"), ("arrival", "EGLL")]
+    assert [a["hub"] for a in rapport["appels"]] == ["EGLL", "EGLL"]
+
+
+def test_main_cli_reprendre(mocker) -> None:
+    """Vérifie que --reprendre est transmis à l'orchestration."""
+    spy = mocker.patch(
+        "src.processing.collecter_hubs.executer_collecte",
+        return_value={"opensky": {}, "openweather": {}},
+    )
+
+    main(["--hubs", "LTFM,EIDW", "--pause", "9", "--reprendre"])
+
+    assert spy.call_args.kwargs["reprendre"] is True
