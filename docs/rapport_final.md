@@ -1,8 +1,7 @@
-# Rapport final — Consommation, déploiement et automatisation
+# iRapport final — Consommation, déploiement et automatisation
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
-> **Statut** : Brouillon — sections techniques pré-remplies, sections réflexives à compléter
-> **Livrable** : Rapport final — consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
+> **Statut** : Brouillon — sections techniques pré-remplies, sections "Discussion" à compléter **Livrable** : Rapport final — consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
 > **Phases internes** : le déploiement et l'automatisation relèvent surtout de la Phase 4 ; ce document consolide aussi les phases 1 à 3.
 
 > **Rappel méthodologique** : le rapport final n'est pas une juxtaposition des Rendus 1, 2 et 3. Avant la soutenance, relire et mettre à jour ces trois rendus, puis les résumer ici plutôt que de les recopier tels quels.
@@ -19,7 +18,7 @@
 
 ## 2. Gestion du code et bonnes pratiques
 
-- **Dépôt Git** : [À COMPLÉTER — lien vers le dépôt GitHub/GitLab une fois créé]
+- **Dépôt Git** : [À COMPLÉTER — lien vers le dépôt GitHub]
 - **Structure professionnelle** : Architecture modulaire en couches (`src/ingestion`, `src/processing`, `src/database`, `src/models`, `src/api`, `src/utils`, `config`) — chaque module a une responsabilité unique, testable indépendamment (voir `tests/`).
 - **Fichier de rejeu du projet** : `README.md` (racine) documente l'installation (`requirements.txt`, `.env.example`) et les commandes pour reproduire le pipeline de bout en bout.
 - **Gestion des secrets** : Toutes les clés d'API (OpenSky, OpenWeather, NewsAPI) et la chaîne de connexion à la base de données sont chargées via des **variables d'environnement** (fichier `.env`, jamais commité — voir `.gitignore`), validées au démarrage par `config/settings.py` (Pydantic `BaseSettings`). Aucun secret n'est écrit en dur dans le code source.
@@ -30,7 +29,7 @@
 
 - **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker-compose`, orchestrant :
   1. Un service **pipeline** (batch) exécutant l'ingestion + transformation + chargement en base à intervalle régulier.
-  2. Un service **API** (FastAPI, `src/api/`) exposant un endpoint `/predict` qui consomme le modèle sauvegardé (`joblib`) pour retourner une prédiction de retard à la demande.
+  2. Un service **API** (FastAPI, `src/api/`) exposant un endpoint `/predict` qui consomme le modèle sauvegardé (`joblib`) pour retourner une **durée observée** prédite (minutes), pas un retard d'horaire.
   3. Un service **base de données** (PostgreSQL conteneurisé, avec volume de données persistant).
 - **Bonnes pratiques DevOps appliquées** :
   - Images Docker basées sur des tags de version explicites (pas de `latest`) pour la reproductibilité.
@@ -40,11 +39,13 @@
 
 ### 3.1 Endpoints de l'API développée (annexe technique anticipée)
 
-| Endpoint | Méthode | Description |
-|---|---|---|
-| `/health` | GET | Vérification de l'état de disponibilité du service (healthcheck) |
-| `/predict` | POST | Reçoit les features d'un vol (JSON), retourne la probabilité/prédiction de retard |
-| `/model/info` | GET | Retourne les métadonnées du modèle chargé (version, date d'entraînement, métriques) |
+
+| Endpoint      | Méthode | Description                                                                               |
+| ------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `/health`     | GET     | Vérification de l'état de disponibilité du service (healthcheck)                          |
+| `/predict`    | POST    | Reçoit les features d'un vol (JSON), retourne la durée observée prédite (`duree_minutes`) |
+| `/model/info` | GET     | Non livré dans ce premier geste (métadonnées dans le joblib ; `/docs` suffit)             |
+
 
 *(Détail des schémas de requête/réponse à documenter une fois l'API implémentée en Phase 4 — génération automatique via Swagger/OpenAPI, nativement fournie par FastAPI.)*
 
@@ -89,3 +90,4 @@
   - *Développées* : voir §3.1 ci-dessus.
   - *Consommées* : OpenSky Network (`/states/all`), OpenWeather (`/data/2.5/weather`), NewsAPI (`/v2/everything`).
 - **Structure des fichiers de configuration** : `.env.example` (racine) documente toutes les variables attendues ; `config/settings.py` centralise leur chargement et validation typée.
+

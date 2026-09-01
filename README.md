@@ -1,6 +1,6 @@
 # Airlines Delay Prediction
 
-> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 / rapport final en cours.
+> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI en place (Docker Compose ensuite).
 
 ## Correspondance entre les phases du projet et les rendus
 
@@ -11,7 +11,7 @@ Le projet est organisé en 4 **phases internes**, qui correspondent aux livrable
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------- |
 | **Phase 1** — Ingestion et Data Profiling          | **Rendu 1** — Découverte et exploration                                                                         | [docs/rendu1_decouverte_exploration.md](docs/rendu1_decouverte_exploration.md)         | Terminée (Rendu 1 Final)                    |
 | **Phase 2** — Schéma BDD en étoile et Pipeline ETL | **Rendu 2** — Organisation et modélisation **des données** (étoile, ETL ; pas de Machine Learning)              | [docs/rendu2_organisation_modelisation.md](docs/rendu2_organisation_modelisation.md)   | Code terminé ; Rendu 2 encore brouillon     |
-| **Phase 3** — Machine Learning et Évaluation       | **Rendu 3** — Machine Learning (cible, LightGBM, métriques, limites)                                            | [docs/rendu3_machine_learning.md](docs/rendu3_machine_learning.md)                     | En cours (premier modèle vol + météo ; brouillon) |
+| **Phase 3** — Machine Learning et Évaluation       | **Rendu 3** — Machine Learning (cible, LightGBM, métriques, limites)                                            | [docs/rendu3_machine_learning.md](docs/rendu3_machine_learning.md)                     | En cours (vol + météo + actu par date ; brouillon) |
 | **Phase 4** — Docker, API, CI/CD                   | **Rapport final** — Consommation, déploiement et automatisation                                                 | [docs/rapport_final.md](docs/rapport_final.md)                                         | En cours                               |
 
 
@@ -29,7 +29,7 @@ Prédire les retards de vols en combinant trois sources de données hétérogèn
 
 La Phase 1 a mis en place l'ingestion et l'exploration des trois sources (modules d'ingestion, notebooks, tests unitaires, Rendu 1). La Phase 2 est **terminée côté code** : schéma PostgreSQL en étoile, pipeline ETL et ERD. Le Rendu 2 reste un **brouillon** (modélisation de données, pas de Machine Learning) ; relecture prévue plus tard, sans le marquer Final pour l'instant.
 
-Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo (régression de la durée observée, LightGBM). Le score BERT n'est pas encore dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». Docker, API FastAPI et l'orchestration sont en cours.
+Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; Docker Compose et l'orchestration viennent ensuite.
 
 ## Architecture du projet
 
@@ -39,7 +39,7 @@ src/
 ├── processing/    # Nettoyage, ETL vers l'étoile, collecte hubs
 ├── database/      # Connexion PostgreSQL et schéma en étoile (Phase 2, terminée)
 ├── models/        # Premier modèle vol + météo (durée observée, LightGBM)
-├── api/           # API FastAPI de prédiction (Phase 4, à venir)
+├── api/           # API FastAPI : GET /health, POST /predict, doc /docs
 └── utils/         # Logging et chemins relatifs à la racine du projet
 notebooks/         # Exploration des 3 sources + notebook de modélisation vol/météo
 tests/             # Tests unitaires (ingestion, schéma, ETL, modèle, chemins, logger)
@@ -56,17 +56,38 @@ pip install -r requirements.txt
 copy .env.example .env       # puis remplacer les placeholders par les clés réelles
 ```
 
-Le fichier `.env.example` ne contient aucun secret : uniquement des placeholders (`identifiant_opensky`, `cle_api_openweather`, `cle_api_newsapi`, etc.). Le fichier `.env` n'est pas versionné.
+Le fichier `.env.example` ne contient aucun secret : uniquement des placeholders (`identifiant_opensky`, `identifiant_client_opensky`, `cle_api_openweather`, `cle_api_newsapi`, etc.). Le fichier `.env` n'est pas versionné.
+
+OpenSky n'accepte plus le login compte (`OPENSKY_USERNAME`) pour `/flights/*` : il faut un **API Client** OAuth2 (`OPENSKY_CLIENT_ID` + `OPENSKY_CLIENT_SECRET` → jeton Bearer). Trino n'est pas requis. Plan Standard : **4000 crédits / jour** sur le seau `/flights` (plafond, pas le restant) ; le restant arrive dans `X-Rate-Limit-Remaining`. Une salve 10 hubs × 2 endpoints = 20 appels, chacun consomme des crédits : ne pas relancer pour « tester ». Un HTTP 403 d'avant mars/septembre 2026, c'était souvent Basic Auth ou un client encore inactif.
+
+Smoke unique (un hub, ~2 h) : `python -m src.ingestion.opensky_client --smoke` — après avoir rempli le `.env`, sans coller le secret dans un chat.
 
 `DATABASE_URL` pointe vers l'instance PostgreSQL locale utilisée par le schéma en étoile, l'ETL et l'entraînement (`python -m src.models.entrainer`).
 
-Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM,EIDW,EDDM,LEBL --pause 9`. `--pause` espace les appels ; un HTTP 429 sur un hub (backoff `Retry-After` ou 60 s, un réessai) ne coupe plus la liste, les hubs suivants sont interrogés. `--reprendre` saute les ICAO déjà présents en JSON dans `data/raw/`.
+## Lancer l'API FastAPI (Phase 4)
+
+L'API sert le fichier `models/modele_vol_meteo.joblib` (gitignoré). Sans ce fichier, `GET /health` répond quand même ; `POST /predict` renvoie **503**. Entraîner d'abord : `python -m src.models.entrainer`.
+
+Depuis la racine du projet, venv Windows :
+
+```bash
+venv\Scripts\activate
+python -m uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000
+```
+
+- Santé : http://127.0.0.1:8000/health
+- Documentation OpenAPI (native FastAPI) : http://127.0.0.1:8000/docs
+- Prédiction : `POST /predict` (corps JSON = features de `src/models/jeu.py`, cible = durée observée en minutes, pas un retard d'horaire)
+
+`GET /metrics` Prometheus n'est pas exposé pour l'instant (cours Monitoring, après Compose).
+
+Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM,EIDW,EDDM,LEBL --pause 9`. `--pause` espace les appels ; un HTTP 429 sur un hub (backoff `Retry-After` ou 60 s, un réessai) ne coupe plus la liste, les hubs suivants sont interrogés. Un **403** (API Client / OAuth) arrête la salve vols. `--reprendre` saute les ICAO déjà présents en JSON dans `data/raw/`.
 
 ## Feuille de route
 
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
-- **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo ; BERT ensuite si le temps le permet)
-- **Phase 4** — Docker, API FastAPI, CI/CD : en cours (**rapport final** = consommation, déploiement, automatisation)
+- **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités jointes par date ; BERT ensuite si le temps le permet)
+- **Phase 4** — API FastAPI en place (`uvicorn src.api.app:app`) ; Docker Compose / CI/CD ensuite (**rapport final** = consommation, déploiement, automatisation)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.
