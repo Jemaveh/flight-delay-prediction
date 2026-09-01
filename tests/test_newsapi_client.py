@@ -58,9 +58,30 @@ def test_rechercher_articles_appelle_url_et_parametres_attendus(mocker) -> None:
     assert kwargs_appel["params"]["q"] == '"airport strike"'
     assert kwargs_appel["params"]["language"] == "en"
     assert kwargs_appel["params"]["from"] == "2026-08-01"
+    assert "to" not in kwargs_appel["params"]
     assert kwargs_appel["params"]["pageSize"] == 50
-    assert kwargs_appel["timeout"] == 10
+    assert kwargs_appel["timeout"] == 60
     assert resultat == {"status": "ok", "articles": []}
+
+
+def test_rechercher_articles_transmet_date_jusqua_en_parametre_to(mocker) -> None:
+    """Vérifie que date_jusqua est envoyée comme paramètre `to` de l'API."""
+    reponse_mock = _construire_reponse_mock(mocker, 200, {"status": "ok", "articles": []})
+    mock_get = mocker.patch(
+        "src.ingestion.newsapi_client.requests.get", return_value=reponse_mock
+    )
+
+    client = NewsApiClient()
+    client.rechercher_articles(
+        mots_cles='"flight delay"',
+        langue="en",
+        date_depuis="2026-08-25",
+        date_jusqua="2026-09-01",
+    )
+
+    _, kwargs_appel = mock_get.call_args
+    assert kwargs_appel["params"]["from"] == "2026-08-25"
+    assert kwargs_appel["params"]["to"] == "2026-09-01"
 
 
 def test_rechercher_articles_sans_langue_ni_date_omet_ces_parametres(mocker) -> None:
@@ -78,6 +99,7 @@ def test_rechercher_articles_sans_langue_ni_date_omet_ces_parametres(mocker) -> 
     client.rechercher_articles(mots_cles="flight delay")
 
     _, kwargs_appel = mock_get.call_args
+    assert "to" not in kwargs_appel["params"]
     assert "language" not in kwargs_appel["params"]
     assert "from" not in kwargs_appel["params"]
 

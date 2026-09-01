@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +193,47 @@ def normaliser_titre(titre: str | None) -> str:
     texte = titre.casefold()
     texte = re.sub(r"[^\w\s]", " ", texte, flags=re.UNICODE)
     return re.sub(r"\s+", " ", texte).strip()
+
+
+def _sans_accents(texte: str) -> str:
+    decompose = unicodedata.normalize("NFD", texte)
+    return "".join(c for c in decompose if unicodedata.category(c) != "Mn")
+
+
+# Stems FR/EN/DE/ES/IT déjà présents dans les mots-clés de collecte NewsAPI.
+STEMS_PERTURBATION_ACTU = (
+    "greve",
+    "strike",
+    "delay",
+    "retard",
+    "huelga",
+    "sciopero",
+    "streik",
+    "closur",
+    "perturb",
+    "verspat",
+    "retraso",
+    "ritardo",
+    "versptaet",
+)
+
+
+def proxy_perturbation_texte(texte: str | None) -> float:
+    """
+    Polarité lexicale simple (0–1) : part des jetons dont le stem évoque
+    une perturbation aérienne. Pas de BERT, pas d'appel réseau.
+    """
+    normalise = _sans_accents(normaliser_titre(texte))
+    if not normalise:
+        return 0.0
+    jetons = normalise.split()
+    if not jetons:
+        return 0.0
+    hits = 0
+    for jeton in jetons:
+        if any(jeton.startswith(stem) for stem in STEMS_PERTURBATION_ACTU):
+            hits += 1
+    return hits / len(jetons)
 
 
 def aplatir_actualites(donnees: dict) -> pd.DataFrame:

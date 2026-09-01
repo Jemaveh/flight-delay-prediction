@@ -15,6 +15,7 @@ from src.processing.data_cleaning import (
     nettoyer_meteo,
     nettoyer_vols,
     normaliser_titre,
+    proxy_perturbation_texte,
 )
 from src.utils.chemins import RACINE_PROJET
 
@@ -90,3 +91,10 @@ def test_normaliser_titre_ignore_casse_et_ponctuation() -> None:
     assert normaliser_titre("Airport strike delays flights") == normaliser_titre(
         "AIRPORT STRIKE DELAYS FLIGHTS!"
     )
+
+
+def test_proxy_perturbation_texte_sans_reseau() -> None:
+    """Vérifie un score lexical > 0 sur un titre de grève, 0 sur un titre neutre."""
+    assert proxy_perturbation_texte("Airport strike delays flights") > 0
+    assert proxy_perturbation_texte("Sunny weather in Paris") == 0.0
+    assert proxy_perturbation_texte(None) == 0.0

@@ -51,7 +51,7 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 URL_BASE_NEWSAPI = "https://newsapi.org/v2/everything"
-TIMEOUT_SECONDES = 10
+TIMEOUT_SECONDES = 60
 
 TAILLE_PAGE_DEFAUT = 100
 
@@ -133,6 +133,7 @@ class NewsApiClient:
         mots_cles: str,
         langue: str | None = None,
         date_depuis: str | None = None,
+        date_jusqua: str | None = None,
         taille_page: int = TAILLE_PAGE_DEFAUT,
     ) -> dict:
         """
@@ -154,6 +155,10 @@ class NewsApiClient:
             (ex : "2026-08-01"). Si None, l'API applique sa fenêtre par
             défaut. Sur le plan gratuit, toute date antérieure à environ 30
             jours dans le passé est rejetée (code 426).
+        date_jusqua : str | None
+            Date la plus récente des articles recherchés, au format ISO 8601
+            (paramètre `to` de l'API). Si None, l'API s'arrête à l'instant
+            présent.
         taille_page : int
             Nombre d'articles à récupérer en un seul appel (maximum 100
             imposé par l'API).
@@ -179,6 +184,8 @@ class NewsApiClient:
             parametres["language"] = langue
         if date_depuis is not None:
             parametres["from"] = date_depuis
+        if date_jusqua is not None:
+            parametres["to"] = date_jusqua
 
         try:
             reponse = requests.get(
@@ -256,6 +263,7 @@ class NewsApiClient:
         self,
         requetes: tuple[RequeteActualites, ...] = REQUETES_ACTUALITES,
         date_depuis: str | None = None,
+        date_jusqua: str | None = None,
         taille_page: int = TAILLE_PAGE_DEFAUT,
     ) -> dict:
         """
@@ -269,6 +277,9 @@ class NewsApiClient:
             mots-clés/langue définies dans REQUETES_ACTUALITES.
         date_depuis : str | None
             Date la plus ancienne des articles recherchés (voir
+            `rechercher_articles`), appliquée à toutes les requêtes.
+        date_jusqua : str | None
+            Date la plus récente des articles recherchés (voir
             `rechercher_articles`), appliquée à toutes les requêtes.
         taille_page : int
             Nombre d'articles à récupérer par requête (voir
@@ -300,6 +311,7 @@ class NewsApiClient:
                 mots_cles=requete.mots_cles,
                 langue=requete.langue,
                 date_depuis=date_depuis,
+                date_jusqua=date_jusqua,
                 taille_page=taille_page,
             )
             resultats.append(
@@ -357,13 +369,38 @@ class NewsApiClient:
 
 
 if __name__ == "__main__":
-    # Exemple d'utilisation : récupération des actualités pour les
-    # cinq requêtes mots-clés/langue définies, puis sauvegarde du résultat
-    # brut dans data/raw/. Utile pour une vérification rapide du module sans
-    # passer par les tests automatisés.
-    client = NewsApiClient()
+    import argparse
 
-    donnees_actualites = client.recuperer_actualites_aeroportuaires()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Une passe NewsAPI : les cinq requêtes REQUETES_ACTUALITES, "
+            "sauvegarde JSON dans data/raw/. Pas de pagination, pas de "
+            "boucle par jour (quota 100 req/jour)."
+        )
+    )
+    parser.add_argument(
+        "--depuis",
+        default=None,
+        help="Date ISO la plus ancienne (paramètre from). Ex. : 2026-08-25.",
+    )
+    parser.add_argument(
+        "--jusqua",
+        default=None,
+        help="Date ISO la plus récente (paramètre to). Ex. : 2026-09-01.",
+    )
+    args = parser.parse_args()
+
+    client = NewsApiClient()
+    logger.info(
+        "Collecte NewsAPI : %s requête(s), depuis=%s, jusqua=%s. Clé non loguée.",
+        len(REQUETES_ACTUALITES),
+        args.depuis,
+        args.jusqua,
+    )
+    donnees_actualites = client.recuperer_actualites_aeroportuaires(
+        date_depuis=args.depuis,
+        date_jusqua=args.jusqua,
+    )
     chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_actualites)
     logger.info(
         "Exécution manuelle terminée, fichier généré : '%s'.",
