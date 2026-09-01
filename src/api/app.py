@@ -18,13 +18,14 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 
 from src.api.schemas import EntreePrediction, SortiePrediction, SortieSante
-from src.models.entrainer import CHEMIN_MODELE_DEFAUT
-from src.utils.chemins import chemin_relatif_projet
+from src.utils.chemins import RACINE_PROJET, chemin_relatif_projet
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-CHEMIN_MODELE: Path = CHEMIN_MODELE_DEFAUT
+# Même chemin que src.models.entrainer.CHEMIN_MODELE_DEFAUT, sans importer
+# l'entraînement (LightGBM + entrepôt + requests) au démarrage de l'API.
+CHEMIN_MODELE: Path = RACINE_PROJET / "models" / "modele_vol_meteo.joblib"
 MESSAGE_MODELE_ABSENT = (
     "Modèle introuvable. Entraîner d'abord avec "
     "`python -m src.models.entrainer` "

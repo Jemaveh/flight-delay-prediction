@@ -27,15 +27,12 @@
 
 ## 3. Déploiement
 
-- **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker-compose`, orchestrant :
-  1. Un service **pipeline** (batch) exécutant l'ingestion + transformation + chargement en base à intervalle régulier.
-  2. Un service **API** (FastAPI, `src/api/`) exposant un endpoint `/predict` qui consomme le modèle sauvegardé (`joblib`) pour retourner une **durée observée** prédite (minutes), pas un retard d'horaire.
-  3. Un service **base de données** (PostgreSQL conteneurisé, avec volume de données persistant).
+- **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker compose` (v2). **Aujourd'hui** : un service **API** (`Dockerfile`, `python:3.11.9-slim-bookworm`, pas `latest`) qui sert `POST /predict` (durée observée, pas un retard d'horaire). Le `joblib` est un **volume** `./models` (fichier gitignoré). Les secrets viennent de `env_file: .env`, pas du `Dockerfile`. PostgreSQL **reste** l'instance Windows de la Phase 2 : un Postgres Compose sur 5432 entrerait en conflit. Un service pipeline / Airflow n'est pas dans ce premier Compose.
 - **Bonnes pratiques DevOps appliquées** :
-  - Images Docker basées sur des tags de version explicites (pas de `latest`) pour la reproductibilité.
-  - Fichier `.dockerignore` pour éviter d'embarquer les secrets/données dans l'image.
-  - Variables d'environnement injectées au conteneur (pas de secrets dans le `Dockerfile`).
-  - [À COMPLÉTER une fois implémenté — multi-stage build, healthchecks, etc.]
+  - Tag d'image Python figé (`3.11.9-slim-bookworm`).
+  - `.dockerignore` (`.env`, `data/`, `venv/`, `credentials.json`).
+  - `healthcheck` HTTP sur `/health`.
+  - Dépendances API allégées : `requirements-api.txt` (sans torch / Jupyter).
 
 ### 3.1 Endpoints de l'API développée (annexe technique anticipée)
 

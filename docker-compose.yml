@@ -1,0 +1,29 @@
+# Premier Compose Phase 4 : l'API seulement.
+# PostgreSQL reste l'instance Windows locale (Phase 2) : un second service
+# sur le même port que cette instance entrerait en conflit. Le joblib est monté en volume
+# (fichier gitignoré, pas recopié dans l'image).
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./models:/app/models:ro
+      - ./logs:/app/logs
+    restart: "no"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s

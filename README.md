@@ -1,6 +1,6 @@
 # Airlines Delay Prediction
 
-> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI en place (Docker Compose ensuite).
+> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI + Compose (service `api`).
 
 ## Correspondance entre les phases du projet et les rendus
 
@@ -29,7 +29,7 @@ Prédire les retards de vols en combinant trois sources de données hétérogèn
 
 La Phase 1 a mis en place l'ingestion et l'exploration des trois sources (modules d'ingestion, notebooks, tests unitaires, Rendu 1). La Phase 2 est **terminée côté code** : schéma PostgreSQL en étoile, pipeline ETL et ERD. Le Rendu 2 reste un **brouillon** (modélisation de données, pas de Machine Learning) ; relecture prévue plus tard, sans le marquer Final pour l'instant.
 
-Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; Docker Compose et l'orchestration viennent ensuite.
+Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow / Prometheus ensuite.
 
 ## Architecture du projet
 
@@ -79,7 +79,23 @@ python -m uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000
 - Documentation OpenAPI (native FastAPI) : http://127.0.0.1:8000/docs
 - Prédiction : `POST /predict` (corps JSON = features de `src/models/jeu.py`, cible = durée observée en minutes, pas un retard d'horaire)
 
-`GET /metrics` Prometheus n'est pas exposé pour l'instant (cours Monitoring, après Compose).
+`GET /metrics` Prometheus n'est pas exposé pour l'instant (cours Monitoring).
+
+## Lancer l'API dans Docker
+
+Il faut **Docker Desktop** (moteur + Compose v2). Le fichier `.env` reste **hors** de l'image (`.dockerignore`) : Compose l'injecte au démarrage. Le `joblib` est monté depuis `models/` (gitignoré) : entraîner en local avant si le fichier n'existe pas (`python -m src.models.entrainer`).
+
+Le port **8000** du PC doit être libre (arrêter uvicorn local, Ctrl+C).
+
+```bash
+docker compose up --build
+```
+
+Puis les mêmes URLs : http://127.0.0.1:8000/health et http://127.0.0.1:8000/docs
+
+Arrêt : `Ctrl+C` puis `docker compose down`.
+
+PostgreSQL n'est **pas** dans ce Compose (conflit avec l'instance Windows déjà utilisée par l'ETL). L'image API n'embarque pas torch (`requirements-api.txt`).
 
 Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM,EIDW,EDDM,LEBL --pause 9`. `--pause` espace les appels ; un HTTP 429 sur un hub (backoff `Retry-After` ou 60 s, un réessai) ne coupe plus la liste, les hubs suivants sont interrogés. Un **403** (API Client / OAuth) arrête la salve vols. `--reprendre` saute les ICAO déjà présents en JSON dans `data/raw/`.
 
@@ -88,6 +104,6 @@ Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
 - **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités jointes par date ; BERT ensuite si le temps le permet)
-- **Phase 4** — API FastAPI en place (`uvicorn src.api.app:app`) ; Docker Compose / CI/CD ensuite (**rapport final** = consommation, déploiement, automatisation)
+- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow / Prometheus ensuite (**rapport final**)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.
