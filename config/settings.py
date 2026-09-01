@@ -53,8 +53,12 @@ class Settings(BaseSettings):
     )
 
     # --- OpenSky Network (données de vols) ---
+    # Compte site / feeder : ne sert plus à l'API REST /flights (OAuth2).
     opensky_username: str
     opensky_password: str
+    # API Client OAuth2 (client credentials → jeton Bearer).
+    opensky_client_id: str = ""
+    opensky_client_secret: str = ""
 
     # --- OpenWeather (données météo) ---
     openweather_api_key: str

@@ -111,7 +111,8 @@ def _est_quota_depasse(erreur: Exception) -> bool:
 
 
 def _est_authentification_refusee(erreur: Exception) -> bool:
-    return "401" in str(erreur)
+    texte = str(erreur)
+    return "401" in texte or "403" in texte
 
 
 def _attente_apres_429(erreur: Exception) -> float:
@@ -166,9 +167,10 @@ def collecter_vols_hubs(
 
     Une pause sépare les appels. Un HTTP 429 déclenche un backoff (Retry-After
     ou 60 s) et un réessai ; si le quota tient, le hub courant est abandonné
-    et la boucle passe au hub suivant. Un HTTP 404 est une liste vide (géré
-    par le module d'ingestion). ``reprendre=True`` saute les endpoints déjà
-    présents en JSON dans le dossier.
+    et la boucle passe au hub suivant. Un HTTP 403 (API Client / OAuth) arrête
+    la salve vols. Un HTTP 404 est une liste vide (géré par le module
+    d'ingestion). ``reprendre=True`` saute les endpoints déjà présents en JSON
+    dans le dossier.
 
     Returns
     -------
@@ -283,18 +285,20 @@ def collecter_vols_hubs(
                             )
                         break
                     if _est_authentification_refusee(erreur):
+                        statut_auth = "403" if "403" in str(erreur) else "401"
                         appels.append(
                             {
                                 "hub": icao,
                                 "endpoint": endpoint,
-                                "statut": "401",
+                                "statut": statut_auth,
                                 "nb_vols": 0,
                                 "fichier": None,
                             }
                         )
                         logger.error(
-                            "Authentification OpenSky refusée (401) : arrêt de la "
-                            "collecte vols."
+                            "Authentification OpenSky refusée (%s) : arrêt de la "
+                            "collecte vols (API Client OAuth, pas le compte feeder).",
+                            statut_auth,
                         )
                         return {
                             "debut": instant_debut,

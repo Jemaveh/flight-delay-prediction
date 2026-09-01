@@ -5,9 +5,12 @@ Ligne de raisonnement
 ----------------------
 OpenSky Network expose une API REST publique qui retourne, pour l'ensemble
 des aéronefs suivis par le réseau de récepteurs ADS-B, leur position et leur
-état à un instant donné (endpoint /states/all). Cette API est accessible en
-mode anonyme avec un quota d'appels restreint, ou avec une authentification
-Basic Auth qui augmente ce quota.
+état à un instant donné (endpoint /states/all). Depuis mars 2026, l'API
+n'accepte plus l'identifiant/mot de passe du compte (Basic Auth) : il faut
+un **API Client** OAuth2 (client_id + secret → jeton Bearer). Sans ces
+identifiants, les appels partent en anonyme (crédits très bas). Trino n'est
+pas requis pour `/flights/departure` ni `/flights/arrival`. Le nom du
+compte feeder (récepteur ADS-B) ne s'utilise pas comme Client ID.
 
 Les appels sont effectués directement via la librairie `requests`, ce qui
 rend explicite chaque aspect de la requête (timeout, gestion des erreurs,
@@ -26,7 +29,7 @@ et l'aéroport de destination.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -38,16 +41,23 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 URL_BASE_OPENSKY = "https://opensky-network.org/api"
-TIMEOUT_SECONDES = 10
+URL_JETON_OPENSKY = (
+    "https://auth.opensky-network.org/auth/realms/opensky-network"
+    "/protocol/openid-connect/token"
+)
+TIMEOUT_SECONDES = 60
+MARGE_RAFRAICHISSEMENT_JETON_SECONDES = 30
 
 # Intervalle maximal autorisé entre `debut` et `fin` sur les endpoints
 # /flights/departure et /flights/arrival, imposé par l'API OpenSky Network
 DUREE_MAX_INTERVALLE_SECONDES = 7 * 24 * 60 * 60
 
-# Valeurs placeholder présentes dans le fichier .env.example : si les identifiants
-# de l'utilisateur correspondent encore à ces valeurs, cela signifie qu'ils n'ont
-# pas été renseignés.
-IDENTIFIANTS_NON_RENSEIGNES = {"", "identifiant_opensky", "mot_de_passe_opensky"}
+# Placeholders .env.example : absents = pas d'OAuth (mode anonyme).
+IDENTIFIANTS_OAUTH_NON_RENSEIGNES = {
+    "",
+    "identifiant_client_opensky",
+    "secret_client_opensky",
+}
 
 
 def construire_enveloppe_vols(
@@ -114,6 +124,38 @@ def extraire_retry_after_secondes(reponse: object) -> float | None:
     return valeur
 
 
+def extraire_credits_restants(reponse: object) -> int | None:
+    """
+    Lit l'en-tête X-Rate-Limit-Remaining (crédits encore disponibles).
+    """
+    headers = getattr(reponse, "headers", None)
+    getter = getattr(headers, "get", None) if headers is not None else None
+    if not callable(getter):
+        return None
+    brut = getter("X-Rate-Limit-Remaining")
+    if brut is None:
+        brut = getter("x-rate-limit-remaining")
+    if not isinstance(brut, (str, int, float)):
+        return None
+    try:
+        return int(float(str(brut).strip()))
+    except ValueError:
+        return None
+
+
+def oauth_est_configure(
+    client_id: str | None,
+    client_secret: str | None,
+) -> bool:
+    """Indique si un couple client_id / secret API Client est réellement renseigné."""
+    return (
+        client_id not in IDENTIFIANTS_OAUTH_NON_RENSEIGNES
+        and client_secret not in IDENTIFIANTS_OAUTH_NON_RENSEIGNES
+        and client_id is not None
+        and client_secret is not None
+    )
+
+
 class ErreurAPIOpenSky(Exception):
     """
     Exception levée lorsque l'appel à l'API OpenSky Network échoue.
@@ -136,34 +178,223 @@ class OpenSkyClient:
 
     def __init__(self) -> None:
         """
-        Initialise le module d'ingestion : prépare l'URL de base de l'API et
-        les identifiants d'authentification (s'ils sont disponibles).
+        Initialise le module d'ingestion : URL de base et identifiants OAuth
+        API Client (s'ils sont disponibles). Le compte feeder n'est pas utilisé.
         """
         self._logger = get_logger(__name__)
         self._url_base = URL_BASE_OPENSKY
-        self._auth = self._preparer_authentification()
+        self._client_id, self._client_secret = self._preparer_oauth()
+        self._jeton: str | None = None
+        self._jeton_expire_a: datetime | None = None
 
-    def _preparer_authentification(self) -> tuple[str, str] | None:
+    def _preparer_oauth(self) -> tuple[str, str] | tuple[None, None]:
         """
-        Prépare les identifiants Basic Auth à partir de la configuration.
-
-        Returns
-        -------
-        tuple[str, str] | None
-            Le couple (identifiant, mot de passe) si des identifiants réels
-            ont été renseignés dans le fichier .env, sinon None.
+        Lit OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET. Sans couple réel :
+        mode anonyme. Ne logue jamais le secret.
         """
-        if (
-            settings.opensky_username in IDENTIFIANTS_NON_RENSEIGNES
-            or settings.opensky_password in IDENTIFIANTS_NON_RENSEIGNES
-        ):
+        client_id = settings.opensky_client_id
+        client_secret = settings.opensky_client_secret
+        if not oauth_est_configure(client_id, client_secret):
             self._logger.warning(
-                "Identifiants OpenSky non renseignés : le module fonctionnera "
-                "en mode anonyme, avec un quota d'appels API plus restreint."
+                "API Client OpenSky non renseigné (OPENSKY_CLIENT_ID / "
+                "OPENSKY_CLIENT_SECRET) : appels anonymes, crédits très "
+                "limités. /flights exige un API Client activé sur le compte, "
+                "pas le nom d'utilisateur feeder, pas Trino."
             )
-            return None
+            return None, None
+        return client_id, client_secret
 
-        return (settings.opensky_username, settings.opensky_password)
+    def _obtenir_jeton(self) -> str | None:
+        """
+        Retourne un jeton Bearer, en le renouvelant si besoin. None si anonyme.
+        """
+        if self._client_id is None or self._client_secret is None:
+            return None
+        maintenant = datetime.now(timezone.utc)
+        if (
+            self._jeton
+            and self._jeton_expire_a is not None
+            and maintenant < self._jeton_expire_a
+        ):
+            return self._jeton
+
+        try:
+            reponse = requests.post(
+                URL_JETON_OPENSKY,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                },
+                timeout=TIMEOUT_SECONDES,
+            )
+        except requests.exceptions.Timeout as erreur:
+            self._logger.error(
+                "Délai d'attente dépassé lors de la demande de jeton OpenSky."
+            )
+            raise ErreurAPIOpenSky(
+                "Timeout lors de la demande de jeton OAuth OpenSky."
+            ) from erreur
+        except requests.exceptions.ConnectionError as erreur:
+            self._logger.error(
+                "Impossible de joindre le serveur d'authentification OpenSky."
+            )
+            raise ErreurAPIOpenSky(
+                "Erreur de connexion au serveur d'authentification OpenSky."
+            ) from erreur
+
+        if reponse.status_code in (401, 403):
+            self._logger.error(
+                "Jeton OAuth OpenSky refusé (HTTP %s) : vérifier que l'API "
+                "Client est activé et que OPENSKY_CLIENT_ID / "
+                "OPENSKY_CLIENT_SECRET correspondent au client (pas au "
+                "compte feeder).",
+                reponse.status_code,
+            )
+            raise ErreurAPIOpenSky(
+                f"Authentification OAuth refusée ({reponse.status_code}) "
+                "par OpenSky Network."
+            )
+        if reponse.status_code != 200:
+            self._logger.error(
+                "Échec de la demande de jeton OpenSky (HTTP %s).",
+                reponse.status_code,
+            )
+            raise ErreurAPIOpenSky(
+                f"Échec de la demande de jeton OAuth OpenSky "
+                f"({reponse.status_code})."
+            )
+
+        payload = reponse.json()
+        jeton = payload.get("access_token")
+        if not isinstance(jeton, str) or not jeton:
+            raise ErreurAPIOpenSky(
+                "Réponse jeton OpenSky inattendue : access_token manquant."
+            )
+        expires_in = int(payload.get("expires_in") or 1800)
+        marge = min(MARGE_RAFRAICHISSEMENT_JETON_SECONDES, max(expires_in - 1, 0))
+        self._jeton = jeton
+        self._jeton_expire_a = maintenant + timedelta(seconds=expires_in - marge)
+        self._logger.info(
+            "Jeton OAuth OpenSky obtenu (expire dans %s s, non logué).",
+            expires_in,
+        )
+        return self._jeton
+
+    def _entetes_requete(self) -> dict[str, str]:
+        """En-têtes HTTP : Bearer si un API Client est configuré."""
+        jeton = self._obtenir_jeton()
+        if not jeton:
+            return {}
+        return {"Authorization": f"Bearer {jeton}"}
+
+    def _journaliser_credits(self, reponse: object) -> None:
+        restants = extraire_credits_restants(reponse)
+        if restants is not None:
+            self._logger.info(
+                "OpenSky X-Rate-Limit-Remaining : %s crédit(s).",
+                restants,
+            )
+
+    def _interpreter_statut_http(
+        self,
+        reponse: object,
+        *,
+        accepter_404_vide: bool = False,
+    ) -> None:
+        """
+        Interprète le code HTTP. Lève ErreurAPIOpenSky si l'appel a échoué.
+        Un 404 n'est pas traité ici : l'appelant le convertit en liste vide.
+        """
+        statut = getattr(reponse, "status_code", None)
+        self._journaliser_credits(reponse)
+        if statut == 401:
+            self._logger.error(
+                "Authentification refusée par l'API OpenSky (code 401) : "
+                "jeton OAuth absent, expiré ou API Client invalide "
+                "(OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET)."
+            )
+            raise ErreurAPIOpenSky(
+                "Authentification refusée (401) par l'API OpenSky Network."
+            )
+        if statut == 403:
+            self._logger.error(
+                "API OpenSky refuse l'accès (HTTP 403) : le mode d'auth "
+                "n'est pas accepté. Activer un API Client sur le compte, "
+                "puis un jeton Bearer (client id + secret). Le compte "
+                "feeder et Trino ne débloquent pas /flights."
+            )
+            raise ErreurAPIOpenSky(
+                "Accès refusé (403) par l'API OpenSky Network."
+            )
+        if statut == 429:
+            attente = extraire_retry_after_secondes(reponse)
+            if attente is not None:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network "
+                    "(Retry-After : %.0f s).",
+                    attente,
+                )
+            else:
+                self._logger.error(
+                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
+                )
+            raise ErreurAPIOpenSky(
+                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
+                retry_after_secondes=attente,
+            )
+        if isinstance(statut, int) and statut >= 500:
+            self._logger.error(
+                "Erreur serveur côté OpenSky Network (code %s).", statut
+            )
+            raise ErreurAPIOpenSky(
+                f"Erreur serveur ({statut}) sur l'API OpenSky Network."
+            )
+        if accepter_404_vide and statut == 404:
+            return
+        if statut != 200:
+            self._logger.error(
+                "Réponse HTTP inattendue (code %s) de l'API OpenSky Network.",
+                statut,
+            )
+            raise ErreurAPIOpenSky(
+                f"Réponse HTTP inattendue ({statut}) de l'API OpenSky Network."
+            )
+
+    def _requete_get(
+        self,
+        url: str,
+        params: dict,
+        *,
+        accepter_404_vide: bool = False,
+    ) -> object:
+        """GET avec jeton Bearer (si configuré). Ne logue pas le jeton."""
+        try:
+            reponse = requests.get(
+                url,
+                params=params,
+                headers=self._entetes_requete(),
+                timeout=TIMEOUT_SECONDES,
+            )
+        except requests.exceptions.Timeout as erreur:
+            self._logger.error(
+                "Délai d'attente dépassé (%s secondes) lors de l'appel à l'API OpenSky.",
+                TIMEOUT_SECONDES,
+            )
+            raise ErreurAPIOpenSky(
+                "Timeout lors de l'appel à l'API OpenSky Network."
+            ) from erreur
+        except requests.exceptions.ConnectionError as erreur:
+            self._logger.error(
+                "Impossible de se connecter à l'API OpenSky Network : %s", erreur
+            )
+            raise ErreurAPIOpenSky(
+                "Erreur de connexion à l'API OpenSky Network."
+            ) from erreur
+        self._interpreter_statut_http(
+            reponse, accepter_404_vide=accepter_404_vide
+        )
+        return reponse
 
     def recuperer_vols_en_temps_reel(
         self, bbox: tuple[float, float, float, float] | None = None
@@ -203,71 +434,7 @@ class OpenSkyClient:
             }
 
         url = f"{self._url_base}/states/all"
-
-        try:
-            reponse = requests.get(
-                url,
-                params=parametres,
-                auth=self._auth,
-                timeout=TIMEOUT_SECONDES,
-            )
-        except requests.exceptions.Timeout as erreur:
-            self._logger.error(
-                "Délai d'attente dépassé (%s secondes) lors de l'appel à l'API OpenSky.",
-                TIMEOUT_SECONDES,
-            )
-            raise ErreurAPIOpenSky(
-                "Timeout lors de l'appel à l'API OpenSky Network."
-            ) from erreur
-        except requests.exceptions.ConnectionError as erreur:
-            self._logger.error(
-                "Impossible de se connecter à l'API OpenSky Network : %s", erreur
-            )
-            raise ErreurAPIOpenSky(
-                "Erreur de connexion à l'API OpenSky Network."
-            ) from erreur
-
-        if reponse.status_code == 401:
-            self._logger.error(
-                "Authentification refusée par l'API OpenSky (code 401) : "
-                "vérifier les identifiants renseignés dans le fichier .env."
-            )
-            raise ErreurAPIOpenSky("Authentification refusée (401) par l'API OpenSky Network.")
-
-        if reponse.status_code == 429:
-            attente = extraire_retry_after_secondes(reponse)
-            if attente is not None:
-                self._logger.error(
-                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network "
-                    "(Retry-After : %.0f s).",
-                    attente,
-                )
-            else:
-                self._logger.error(
-                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
-                )
-            raise ErreurAPIOpenSky(
-                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
-                retry_after_secondes=attente,
-            )
-
-        if reponse.status_code >= 500:
-            self._logger.error(
-                "Erreur serveur côté OpenSky Network (code %s).", reponse.status_code
-            )
-            raise ErreurAPIOpenSky(
-                f"Erreur serveur ({reponse.status_code}) sur l'API OpenSky Network."
-            )
-
-        if reponse.status_code != 200:
-            self._logger.error(
-                "Réponse HTTP inattendue (code %s) de l'API OpenSky Network.",
-                reponse.status_code,
-            )
-            raise ErreurAPIOpenSky(
-                f"Réponse HTTP inattendue ({reponse.status_code}) de l'API OpenSky Network."
-            )
-
+        reponse = self._requete_get(url, parametres)
         self._logger.info("Appel à l'API OpenSky Network réussi (code 200).")
         return reponse.json()
 
@@ -330,60 +497,9 @@ class OpenSkyClient:
             "end": fin,
         }
 
-        try:
-            reponse = requests.get(
-                url,
-                params=parametres,
-                auth=self._auth,
-                timeout=TIMEOUT_SECONDES,
-            )
-        except requests.exceptions.Timeout as erreur:
-            self._logger.error(
-                "Délai d'attente dépassé (%s secondes) lors de l'appel à l'API OpenSky.",
-                TIMEOUT_SECONDES,
-            )
-            raise ErreurAPIOpenSky(
-                "Timeout lors de l'appel à l'API OpenSky Network."
-            ) from erreur
-        except requests.exceptions.ConnectionError as erreur:
-            self._logger.error(
-                "Impossible de se connecter à l'API OpenSky Network : %s", erreur
-            )
-            raise ErreurAPIOpenSky(
-                "Erreur de connexion à l'API OpenSky Network."
-            ) from erreur
-
-        if reponse.status_code == 401:
-            self._logger.error(
-                "Authentification refusée par l'API OpenSky (code 401) : "
-                "vérifier les identifiants renseignés dans le fichier .env."
-            )
-            raise ErreurAPIOpenSky("Authentification refusée (401) par l'API OpenSky Network.")
-
-        if reponse.status_code == 429:
-            attente = extraire_retry_after_secondes(reponse)
-            if attente is not None:
-                self._logger.error(
-                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network "
-                    "(Retry-After : %.0f s).",
-                    attente,
-                )
-            else:
-                self._logger.error(
-                    "Quota d'appels dépassé (code 429) sur l'API OpenSky Network."
-                )
-            raise ErreurAPIOpenSky(
-                "Quota d'appels dépassé (429) sur l'API OpenSky Network.",
-                retry_after_secondes=attente,
-            )
-
-        if reponse.status_code >= 500:
-            self._logger.error(
-                "Erreur serveur côté OpenSky Network (code %s).", reponse.status_code
-            )
-            raise ErreurAPIOpenSky(
-                f"Erreur serveur ({reponse.status_code}) sur l'API OpenSky Network."
-            )
+        reponse = self._requete_get(
+            url, parametres, accepter_404_vide=True
+        )
 
         if reponse.status_code == 404:
             self._logger.info(
@@ -392,15 +508,6 @@ class OpenSkyClient:
                 icao_aeroport,
             )
             return []
-
-        if reponse.status_code != 200:
-            self._logger.error(
-                "Réponse HTTP inattendue (code %s) de l'API OpenSky Network.",
-                reponse.status_code,
-            )
-            raise ErreurAPIOpenSky(
-                f"Réponse HTTP inattendue ({reponse.status_code}) de l'API OpenSky Network."
-            )
 
         self._logger.info("Appel à l'API OpenSky Network réussi (code 200).")
         payload = reponse.json()
@@ -575,29 +682,42 @@ class OpenSkyClient:
 
 
 if __name__ == "__main__":
-    # Exemple d'utilisation manuelle : récupération des vols au-dessus de la
-    # France métropolitaine (bounding box approximative), puis sauvegarde du
-    # résultat brut dans data/raw/. Utile pour une vérification rapide du
-    # module sans passer par les tests automatisés.
-    client = OpenSkyClient()
-    BBOX_FRANCE = (41.0, -5.0, 51.5, 10.0)  # lamin, lomin, lamax, lomax
+    import argparse
 
-    donnees_vols = client.recuperer_vols_en_temps_reel(bbox=BBOX_FRANCE)
-    chemin_sauvegarde = client.sauvegarder_donnees_brutes(donnees_vols)
-    logger.info(
-        "Exécution manuelle terminée, fichier généré : '%s'.",
-        chemin_relatif_projet(chemin_sauvegarde),
+    parser = argparse.ArgumentParser(
+        description=(
+            "Client OpenSky OAuth2. Un seul appel smoke /flights/departure "
+            "(un hub), pour ne pas brûler les 4000 crédits Standard."
+        )
     )
-
-    # Exemple d'utilisation des vols programmés : vols au départ de Paris-CDG
-    # sur les dernières 24 heures
-    instant_present = int(datetime.now().timestamp())
-    instant_hier = instant_present - 24 * 60 * 60
-
-    vols_depart_cdg = client.recuperer_vols_depart(
-        icao_aeroport="LFPG", debut=instant_hier, fin=instant_present
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Un GET /flights/departure (LFPG, ~2 h). N'affiche pas le secret.",
     )
-    logger.info(
-        "Vols au départ de LFPG sur les dernières 24h : %s vol(s) trouvé(s).",
-        len(vols_depart_cdg),
-    )
+    parser.add_argument("--hub", default="LFPG", help="Code ICAO du smoke test.")
+    args = parser.parse_args()
+    if not args.smoke:
+        logger.info(
+            "Aucun appel réseau. Pour un smoke unique : "
+            "python -m src.ingestion.opensky_client --smoke"
+        )
+    else:
+        client = OpenSkyClient()
+        if client._client_id is None:
+            logger.error(
+                "OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET absents du .env : "
+                "0 appel live. Remplir le .env (ne pas coller le secret ici), "
+                "puis relancer --smoke."
+            )
+        else:
+            fin = int(datetime.now(timezone.utc).timestamp())
+            debut = fin - 2 * 60 * 60
+            vols = client.recuperer_vols_depart(
+                icao_aeroport=args.hub, debut=debut, fin=fin
+            )
+            logger.info(
+                "Smoke /flights/departure %s : %s vol(s). Jeton non logué.",
+                args.hub,
+                len(vols),
+            )

@@ -146,6 +146,29 @@ def test_collecter_vols_hubs_continue_apres_429_sur_le_hub_suivant(mocker) -> No
     assert mock_sleep.call_args_list[0].args == (ATTENTE_429_DEFAUT_SECONDES,)
 
 
+def test_collecter_vols_hubs_sarrete_sur_403(mocker) -> None:
+    """Vérifie qu'un HTTP 403 arrête la salve (API Client), sans enchaîner les hubs."""
+    mocker.patch("src.processing.collecter_hubs.time.sleep")
+    client = _ClientOpenSkyFictif(
+        {("departure", "EGLL"): [{"icao24": "c"}]},
+        erreurs={
+            ("departure", "LFPG"): ErreurAPIOpenSky(
+                "Accès refusé (403) par l'API OpenSky Network."
+            )
+        },
+    )
+    rapport = collecter_vols_hubs(
+        client=client,
+        hubs=HUBS_TEST,
+        debut=1000,
+        fin=2000,
+        pause_secondes=0,
+        dossier="data/raw",
+    )
+    assert rapport["appels"][0]["statut"] == "403"
+    assert ("departure", "EGLL") not in client.appels
+
+
 def test_executer_collecte_rappelle_la_meteo_apres_un_429(mocker) -> None:
     """
     Vérifie que la capture OpenWeather a lieu même si OpenSky s'est arrêté (429).

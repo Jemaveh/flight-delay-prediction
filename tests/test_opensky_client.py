@@ -19,8 +19,12 @@ import requests
 from src.ingestion.opensky_client import (
     ErreurAPIOpenSky,
     OpenSkyClient,
+    TIMEOUT_SECONDES,
+    URL_JETON_OPENSKY,
     construire_enveloppe_vols,
+    extraire_credits_restants,
     extraire_retry_after_secondes,
+    oauth_est_configure,
 )
 
 
@@ -29,7 +33,15 @@ def _construire_reponse_mock(mocker, status_code: int, contenu_json: dict | None
     reponse_mock = mocker.Mock()
     reponse_mock.status_code = status_code
     reponse_mock.json.return_value = contenu_json if contenu_json is not None else {}
+    reponse_mock.headers = {}
     return reponse_mock
+
+
+@pytest.fixture(autouse=True)
+def _oauth_inactif_dans_les_tests(mocker):
+    """Les tests restent anonymes, indépendamment du .env local."""
+    mocker.patch("src.ingestion.opensky_client.settings.opensky_client_id", "")
+    mocker.patch("src.ingestion.opensky_client.settings.opensky_client_secret", "")
 
 
 def test_recuperer_vols_appelle_url_et_parametres_attendus(mocker) -> None:
@@ -56,7 +68,8 @@ def test_recuperer_vols_appelle_url_et_parametres_attendus(mocker) -> None:
         "lamax": 51.5,
         "lomax": 10.0,
     }
-    assert kwargs_appel["timeout"] == 10
+    assert kwargs_appel["timeout"] == TIMEOUT_SECONDES
+    assert "auth" not in kwargs_appel
     assert resultat == {"states": []}
 
 
@@ -109,7 +122,8 @@ def test_recuperer_vols_depart_appelle_url_et_parametres_attendus(mocker) -> Non
 
     assert args_appel[0] == "https://opensky-network.org/api/flights/departure"
     assert kwargs_appel["params"] == {"airport": "LFPG", "begin": 1000, "end": 2000}
-    assert kwargs_appel["timeout"] == 10
+    assert kwargs_appel["timeout"] == TIMEOUT_SECONDES
+    assert "auth" not in kwargs_appel
     assert resultat == vols_mock
 
 
@@ -132,7 +146,7 @@ def test_recuperer_vols_arrivee_appelle_url_et_parametres_attendus(mocker) -> No
 
     assert args_appel[0] == "https://opensky-network.org/api/flights/arrival"
     assert kwargs_appel["params"] == {"airport": "LFPG", "begin": 1000, "end": 2000}
-    assert kwargs_appel["timeout"] == 10
+    assert kwargs_appel["timeout"] == TIMEOUT_SECONDES
     assert resultat == vols_mock
 
 
@@ -296,3 +310,62 @@ def test_sauvegarder_vols_utilise_le_prefixe_flights(tmp_path: Path) -> None:
     assert contenu["airport"] == "EGLL"
     assert contenu["endpoint"] == "arrival"
     assert contenu["nb_vols"] == 1
+
+
+def test_oauth_client_credentials_puis_bearer(mocker) -> None:
+    """Vérifie le POST token puis le GET avec Authorization Bearer."""
+    mocker.patch(
+        "src.ingestion.opensky_client.settings.opensky_client_id",
+        "demo-api-client",
+    )
+    mocker.patch(
+        "src.ingestion.opensky_client.settings.opensky_client_secret",
+        "demo-secret",
+    )
+    reponse_token = mocker.Mock()
+    reponse_token.status_code = 200
+    reponse_token.json.return_value = {
+        "access_token": "jeton-test",
+        "expires_in": 1800,
+    }
+    reponse_token.headers = {}
+    mock_post = mocker.patch(
+        "src.ingestion.opensky_client.requests.post", return_value=reponse_token
+    )
+    reponse_get = _construire_reponse_mock(mocker, 200, {"states": []})
+    reponse_get.headers = {"X-Rate-Limit-Remaining": "3999"}
+    mock_get = mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_get
+    )
+
+    client = OpenSkyClient()
+    client.recuperer_vols_en_temps_reel()
+    client.recuperer_vols_en_temps_reel()
+
+    mock_post.assert_called_once()
+    assert mock_post.call_args[0][0] == URL_JETON_OPENSKY
+    assert mock_post.call_args[1]["data"]["grant_type"] == "client_credentials"
+    assert mock_post.call_args[1]["data"]["client_id"] == "demo-api-client"
+    assert mock_get.call_count == 2
+    assert mock_get.call_args[1]["headers"]["Authorization"] == "Bearer jeton-test"
+    assert "auth" not in mock_get.call_args[1]
+
+
+def test_flights_leve_exception_sur_403(mocker) -> None:
+    """Vérifie qu'un HTTP 403 sur /flights/departure lève ErreurAPIOpenSky."""
+    reponse_mock = _construire_reponse_mock(mocker, 403)
+    mocker.patch(
+        "src.ingestion.opensky_client.requests.get", return_value=reponse_mock
+    )
+    client = OpenSkyClient()
+    with pytest.raises(ErreurAPIOpenSky, match="403"):
+        client.recuperer_vols_depart(icao_aeroport="LFPG", debut=1000, fin=2000)
+
+
+def test_extraire_credits_restants_et_oauth_est_configure() -> None:
+    """Vérifie l'en-tête de crédits et le filtre des placeholders OAuth."""
+    reponse = type("R", (), {"headers": {"X-Rate-Limit-Remaining": "4000"}})()
+    assert extraire_credits_restants(reponse) == 4000
+    assert oauth_est_configure("id-reel", "secret-reel") is True
+    assert oauth_est_configure("identifiant_client_opensky", "secret-reel") is False
+    assert oauth_est_configure("", "") is False
