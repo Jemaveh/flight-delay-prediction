@@ -27,7 +27,7 @@
 
 ## 3. Déploiement
 
-- **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker compose` (v2). **Aujourd'hui** : un service **API** (`Dockerfile`, `python:3.11.9-slim-bookworm`, pas `latest`) qui sert `POST /predict` (durée observée, pas un retard d'horaire). Le `joblib` est un **volume** `./models` (fichier gitignoré). Les secrets viennent de `env_file: .env`, pas du `Dockerfile`. PostgreSQL **reste** l'instance Windows de la Phase 2 : un Postgres Compose sur 5432 entrerait en conflit. Un service pipeline / Airflow n'est pas dans ce premier Compose.
+- **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker compose` (v2). Service **API** (`Dockerfile`, `python:3.11.9-slim-bookworm`, pas `latest`) qui sert `POST /predict` (durée observée, pas un retard d'horaire). Le `joblib` est un **volume** `./models` (fichier gitignoré). Les secrets viennent de `env_file: .env`, pas du `Dockerfile`. PostgreSQL **métier** reste l'instance locale de la Phase 2 : aucun mapping `5432:5432` dans Compose. L'orchestration quotidienne est un profil **`airflow`** (LocalExecutor, image `apache/airflow:2.10.4-python3.11`) : métabase Postgres interne à Airflow, distincte de l'entrepôt.
 - **Bonnes pratiques DevOps appliquées** :
   - Tag d'image Python figé (`3.11.9-slim-bookworm`).
   - `.dockerignore` (`.env`, `data/`, `venv/`, `credentials.json`).
@@ -50,7 +50,7 @@
 
 ## 4. Automatisation & Monitoring
 
-- **Automatisation des traitements** : [À COMPLÉTER — orchestration retenue : cron simple, ou GitHub Actions planifié, selon le temps disponible en Phase 4]
+- **Automatisation des traitements** : Apache Airflow **LocalExecutor** (`docker compose --profile airflow`). DAG `pipeline_quotidien` (`@daily`, `catchup=False`, créé en pause) : `collecter_hubs` → `etl` → `entrainer`. NewsAPI n'est pas dans le DAG. Les clés restent le `.env` du projet (pas des Variables Airflow). Un Postgres interne (`airflow-db`) stocke uniquement les métadonnées Airflow ; l'entrepôt étoile est `DATABASE_URL` / `DATABASE_URL_CONTENEUR` (`host.docker.internal` depuis un conteneur).
 - **CI/CD** : Pipeline GitHub Actions exécutant à chaque push : installation des dépendances, linting, tests unitaires (`pytest`), et build de l'image Docker.
 - **Monitoring** : Logs structurés (voir `src/utils/logger.py`) centralisant les erreurs d'ingestion, les temps d'exécution et les alertes de rate-limiting API. [À COMPLÉTER — outil de monitoring retenu si le temps le permet : simple fichier de log, ou solution dédiée]
 - **Gestion des erreurs et alertes** : Chaque module d'ingestion utilise un bloc `try/except` ciblé (pas de `except` générique silencieux) qui journalise l'erreur avec son contexte (source, timestamp, message) sans interrompre les autres sources en cas d'échec partiel (résilience du pipeline).

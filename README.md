@@ -1,6 +1,6 @@
 # Airlines Delay Prediction
 
-> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI + Compose (service `api`).
+> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI + Compose (service `api`) + Airflow LocalExecutor (profil `airflow`).
 
 ## Correspondance entre les phases du projet et les rendus
 
@@ -29,7 +29,7 @@ Prédire les retards de vols en combinant trois sources de données hétérogèn
 
 La Phase 1 a mis en place l'ingestion et l'exploration des trois sources (modules d'ingestion, notebooks, tests unitaires, Rendu 1). La Phase 2 est **terminée côté code** : schéma PostgreSQL en étoile, pipeline ETL et ERD. Le Rendu 2 reste un **brouillon** (modélisation de données, pas de Machine Learning) ; relecture prévue plus tard, sans le marquer Final pour l'instant.
 
-Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow / Prometheus ensuite.
+Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow (profil Compose `airflow`, LocalExecutor) orchestre ensuite collecte → ETL → entraînement. Prometheus n'est pas encore branché.
 
 ## Architecture du projet
 
@@ -41,8 +41,9 @@ src/
 ├── models/        # Premier modèle vol + météo (durée observée, LightGBM)
 ├── api/           # API FastAPI : GET /health, POST /predict, doc /docs
 └── utils/         # Logging et chemins relatifs à la racine du projet
+dags/              # DAG Airflow quotidien (collecte → ETL → entraînement)
 notebooks/         # Exploration des 3 sources + notebook de modélisation vol/météo
-tests/             # Tests unitaires (ingestion, schéma, ETL, modèle, chemins, logger)
+tests/             # Tests unitaires (ingestion, schéma, ETL, modèle, API, Compose, DAG)
 ```
 
 Le détail de chaque choix d'architecture est documenté dans les rapports du dossier `docs/`.
@@ -95,7 +96,29 @@ Puis les mêmes URLs : http://127.0.0.1:8000/health et http://127.0.0.1:8000/doc
 
 Arrêt : `Ctrl+C` puis `docker compose down`.
 
-PostgreSQL n'est **pas** dans ce Compose (conflit avec l'instance Windows déjà utilisée par l'ETL). L'image API n'embarque pas torch (`requirements-api.txt`).
+PostgreSQL **métier** n'est **pas** publié par ce Compose (conflit avec l'instance Windows déjà utilisée par l'ETL). L'image API n'embarque pas torch (`requirements-api.txt`).
+
+## Orchestration Airflow (Phase 4)
+
+Le DAG `dags/pipeline_quotidien.py` enchaîne, **une fois par jour**, les mêmes commandes qu'en local :
+
+1. `python -m src.processing.collecter_hubs --pause 9` (OpenSky + OpenWeather ; **pas** NewsAPI)
+2. `python -m src.processing.etl`
+3. `python -m src.models.entrainer`
+
+Ce n'est **pas** le Compose Celery de l'exam météo (pas de Redis, pas de Flower, pas de cron à la minute). Executor : **LocalExecutor**. Le Postgres du profil `airflow` est la **métabase Airflow** (interne, aucun `5432:5432`). L'entrepôt vols/météo reste `DATABASE_URL`.
+
+Les DAG naissent **en pause** : un `compose up` ne lance pas de collecte OpenSky (quota 4000 crédits / jour).
+
+Dans `.env`, décommenter et aligner `DATABASE_URL_CONTENEUR` (hôte `host.docker.internal`, pas `localhost`) **avant** de lancer Airflow. Le venv Windows continue d'utiliser `DATABASE_URL` en `localhost`.
+
+```bash
+docker compose --profile airflow up --build
+```
+
+Interface : http://127.0.0.1:8080 (compte local par défaut `airflow` / `airflow`). Activer le DAG `pipeline_quotidien` seulement quand une collecte est voulue. Arrêt : `Ctrl+C` puis `docker compose --profile airflow down`.
+
+Sur la VM école : les mêmes commandes, une seule horloge (ne pas faire tourner le DAG à la fois sur le PC et sur la VM).
 
 Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM,EIDW,EDDM,LEBL --pause 9`. `--pause` espace les appels ; un HTTP 429 sur un hub (backoff `Retry-After` ou 60 s, un réessai) ne coupe plus la liste, les hubs suivants sont interrogés. Un **403** (API Client / OAuth) arrête la salve vols. `--reprendre` saute les ICAO déjà présents en JSON dans `data/raw/`.
 
@@ -104,6 +127,6 @@ Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
 - **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités jointes par date ; BERT ensuite si le temps le permet)
-- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow / Prometheus ensuite (**rapport final**)
+- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow LocalExecutor (`--profile airflow`) ; Prometheus ensuite si le temps le permet (**rapport final**)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.

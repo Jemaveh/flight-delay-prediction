@@ -21,4 +21,4 @@ def test_compose_api_injecte_env_et_monte_le_modele() -> None:
     texte = (RACINE_PROJET / "docker-compose.yml").read_text(encoding="utf-8")
     assert "env_file:" in texte
     assert "./models:/app/models" in texte
-    assert "5432" not in texte
+    assert "5432:5432" not in texte
