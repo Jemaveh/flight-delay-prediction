@@ -11,7 +11,7 @@ Le projet est organisé en 4 **phases internes**, qui correspondent aux livrable
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------- |
 | **Phase 1** — Ingestion et Data Profiling          | **Rendu 1** — Découverte et exploration                                                                         | [docs/rendu1_decouverte_exploration.md](docs/rendu1_decouverte_exploration.md)         | Terminée (Rendu 1 Final)                    |
 | **Phase 2** — Schéma BDD en étoile et Pipeline ETL | **Rendu 2** — Organisation et modélisation **des données** (étoile, ETL ; pas de Machine Learning)              | [docs/rendu2_organisation_modelisation.md](docs/rendu2_organisation_modelisation.md)   | Code terminé ; Rendu 2 encore brouillon     |
-| **Phase 3** — Machine Learning et Évaluation       | **Rendu 3** — Machine Learning (cible, LightGBM, métriques, limites)                                            | [docs/rendu3_machine_learning.md](docs/rendu3_machine_learning.md)                     | En cours (vol + météo + actu par date ; brouillon) |
+| **Phase 3** — Machine Learning et Évaluation       | **Rendu 3** — Machine Learning (cible, LightGBM, métriques, limites)                                            | [docs/rendu3_machine_learning.md](docs/rendu3_machine_learning.md)                     | En cours (durée ADS-B ; Open-Meteo / proxy OD testé ; brouillon) |
 | **Phase 4** — Docker, API, CI/CD                   | **Rapport final** — Consommation, déploiement et automatisation                                                 | [docs/rapport_final.md](docs/rapport_final.md)                                         | En cours                               |
 
 
@@ -22,14 +22,14 @@ Prédire les retards de vols en combinant trois sources de données hétérogèn
 
 | Source                           | Données                                 | Usage                                  |
 | -------------------------------- | --------------------------------------- | -------------------------------------- |
-| **OpenSky Network**              | Vols, positions, statuts                | Variable cible (retard) + features vol |
+| **OpenSky Network**              | Vols, positions, statuts                | Durée observée (`first_seen` / `last_seen`) |
 | **OpenWeather**                  | Vent, pluie, visibilité                 | Features météo                         |
 | **NewsAPI + BERT (HuggingFace)** | Actualités (grèves, météo extrême, ATC) | Score de sentiment / perturbation      |
 
 
 La Phase 1 a mis en place l'ingestion et l'exploration des trois sources (modules d'ingestion, notebooks, tests unitaires, Rendu 1). La Phase 2 est **terminée côté code** : schéma PostgreSQL en étoile, pipeline ETL et ERD. Le Rendu 2 reste un **brouillon** (modélisation de données, pas de Machine Learning) ; relecture prévue plus tard, sans le marquer Final pour l'instant.
 
-Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM). Le score BERT n'est pas dans le modèle. Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow (profil Compose `airflow`, LocalExecutor) orchestre ensuite collecte → ETL → entraînement. Prometheus n'est pas encore branché.
+Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM), y compris un score BERT agrégé par jour (`docs/experience_actualites_bert.md`). Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow (profil Compose `airflow`, SequentialExecutor) orchestre ensuite collecte → ETL → entraînement. Prometheus n'est pas encore branché.
 
 ## Architecture du projet
 
@@ -42,7 +42,7 @@ src/
 ├── api/           # API FastAPI : GET /health, POST /predict, doc /docs
 └── utils/         # Logging et chemins relatifs à la racine du projet
 dags/              # DAG Airflow quotidien (collecte → ETL → entraînement)
-notebooks/         # Exploration des 3 sources + notebook de modélisation vol/météo
+notebooks/         # Exploration des 3 sources, modélisation vol/météo, sentiment BERT
 tests/             # Tests unitaires (ingestion, schéma, ETL, modèle, API, Compose, DAG)
 ```
 
@@ -79,6 +79,7 @@ python -m uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000
 - Santé : http://127.0.0.1:8000/health
 - Documentation OpenAPI (native FastAPI) : http://127.0.0.1:8000/docs
 - Prédiction : `POST /predict` (corps JSON = features de `src/models/jeu.py`, cible = durée observée en minutes, pas un retard d'horaire)
+- Expérience archive météo / proxy OD (hors API) : `python -m src.models.experience_proxy_retard`
 
 `GET /metrics` Prometheus n'est pas exposé pour l'instant (cours Monitoring).
 
@@ -127,7 +128,7 @@ Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM
 
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
-- **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités jointes par date ; BERT ensuite si le temps le permet)
+- **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités ; BERT agrégé par jour, notebook `05_sentiment_bert.ipynb` ; expérience hub/flags/J−1 : `python -m src.models.experience_actu --avec-bert` ; expérience Open-Meteo + proxy OD : `python -m src.models.experience_proxy_retard`)
 - **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow `standalone` (`--profile airflow`) ; Prometheus ensuite si le temps le permet (**rapport final**)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.

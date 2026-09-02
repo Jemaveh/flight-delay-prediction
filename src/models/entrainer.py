@@ -153,11 +153,16 @@ def executer_pipeline(
     """
     cadre = jeu if jeu is not None else charger_vols_meteo(engine)
     diag = diagnostiquer_volumetrie(cadre)
-    code = retenir_cible(diag)
-    if code != CODE_CIBLE:
-        raise ValueError(
-            f"Cible retenue par le diagnostic : {code}, ce module entraîne {CODE_CIBLE}."
+    code_diagnostic = retenir_cible(diag)
+    if code_diagnostic != CODE_CIBLE:
+        logger.warning(
+            "Diagnostic volumétrie : cible %s. Entraînement sur %s "
+            "(durée observée ; retard_minutes est un écart à la médiane "
+            "de route, pas un horaire programmé).",
+            code_diagnostic,
+            CODE_CIBLE,
         )
+    code = CODE_CIBLE
     colonnes = liste_colonnes_features(avec_actu)
     (
         X_train,
@@ -192,6 +197,7 @@ def executer_pipeline(
     rapport = {
         "cible": NOM_CIBLE,
         "code_cible": code,
+        "code_cible_diagnostic": code_diagnostic,
         "diagnostic": diag,
         "n_train": int(len(X_train)),
         "n_test": int(len(X_test)),

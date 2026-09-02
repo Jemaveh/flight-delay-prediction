@@ -81,12 +81,17 @@ def client_avec_modele(monkeypatch, tmp_path: Path) -> TestClient:
 
 
 def test_app_n_importe_pas_le_module_entrainer() -> None:
-    """L'API ne charge pas l'entraînement (évite requests/ETL dans l'image)."""
+    """L'API ne charge pas l'entraînement ni BERT (image allégée)."""
     from src.utils.chemins import RACINE_PROJET
 
     texte = (RACINE_PROJET / "src" / "api" / "app.py").read_text(encoding="utf-8")
     assert "from src.models.entrainer" not in texte
-    """Vérifie que le BaseModel couvre exactement les colonnes d'entraînement."""
+    assert "scorer_sentiment" not in texte
+    assert "transformers" not in texte
+
+
+def test_schema_prediction_aligne_sur_les_features() -> None:
+    """Le BaseModel couvre exactement les colonnes d'entraînement, sans fuite."""
     assert set(EntreePrediction.model_fields) == set(liste_colonnes_features(True))
     assert "last_seen" not in EntreePrediction.model_fields
     assert "duree_minutes" not in EntreePrediction.model_fields

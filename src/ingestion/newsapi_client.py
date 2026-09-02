@@ -70,10 +70,14 @@ class RequeteActualites:
     langue : str
         Code de langue ISO-639-1 à deux lettres attendu par le paramètre
         `language` de l'API (ex : "fr", "en").
+    code_icao : str | None
+        Hub ciblé (collecte ``--par-hub``). None pour les cinq requêtes
+        génériques par langue.
     """
 
     mots_cles: str
     langue: str
+    code_icao: str | None = None
 
 
 # Petite liste de requêtes mots-clés/langue couvrant les événements les plus
@@ -103,6 +107,61 @@ REQUETES_ACTUALITES: tuple[RequeteActualites, ...] = (
     RequeteActualites(
         '"sciopero aeroporto" OR "ritardo volo" OR "controllo del traffico aereo"',
         "it",
+    ),
+)
+
+# Une requête par hub (10 appels), pas 10 × 5 langues. AND aéroport/grève/vol
+# pour limiter le bruit (Dublin, Istanbul, Madrid).
+REQUETES_ACTUALITES_PAR_HUB: tuple[RequeteActualites, ...] = (
+    RequeteActualites(
+        '(CDG OR "Charles de Gaulle" OR Roissy) AND (aéroport OR grève OR vol OR retard)',
+        "fr",
+        "LFPG",
+    ),
+    RequeteActualites(
+        "(LHR OR Heathrow) AND (airport OR strike OR delay OR flight)",
+        "en",
+        "EGLL",
+    ),
+    RequeteActualites(
+        "(Frankfurt OR Francfort OR EDDF) AND (Flughafen OR Streik OR Flug)",
+        "de",
+        "EDDF",
+    ),
+    RequeteActualites(
+        "(Schiphol OR EHAM) AND (airport OR strike OR delay OR flight OR luchthaven)",
+        "en",
+        "EHAM",
+    ),
+    RequeteActualites(
+        "(Barajas OR LEMD) AND (aeropuerto OR huelga OR retraso OR vuelo)",
+        "es",
+        "LEMD",
+    ),
+    RequeteActualites(
+        "(Fiumicino OR FCO OR LIRF) AND (aeroporto OR sciopero OR ritardo OR volo)",
+        "it",
+        "LIRF",
+    ),
+    RequeteActualites(
+        '("Istanbul Airport" OR LTFM OR "Istanbul Havalimani") AND (strike OR delay OR flight OR airport)',
+        "en",
+        "LTFM",
+    ),
+    RequeteActualites(
+        '("Dublin Airport" OR EIDW) AND (strike OR delay OR flight OR airport)',
+        "en",
+        "EIDW",
+    ),
+    RequeteActualites(
+        "(München OR Munich OR EDDM) AND (Flughafen OR Streik OR Flug)",
+        "de",
+        "EDDM",
+    ),
+    RequeteActualites(
+        '("El Prat" OR LEBL OR "aeroport Barcelona") AND (aeropuerto OR huelga OR retraso OR vuelo)',
+        "es",
+        "LEBL",
     ),
 )
 
@@ -318,6 +377,7 @@ class NewsApiClient:
                 {
                     "mots_cles": requete.mots_cles,
                     "langue_requete": requete.langue,
+                    "code_icao": requete.code_icao,
                     "resultat": resultat_requete,
                 }
             )
@@ -373,8 +433,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description=(
-            "Une passe NewsAPI : les cinq requêtes REQUETES_ACTUALITES, "
-            "sauvegarde JSON dans data/raw/. Pas de pagination, pas de "
+            "Passe NewsAPI : cinq requêtes par langue, ou --par-hub "
+            "(10 requêtes, un hub chacune). Pas de pagination, pas de "
             "boucle par jour (quota 100 req/jour)."
         )
     )
@@ -388,16 +448,27 @@ if __name__ == "__main__":
         default=None,
         help="Date ISO la plus récente (paramètre to). Ex. : 2026-09-01.",
     )
+    parser.add_argument(
+        "--par-hub",
+        action="store_true",
+        help="Dix requêtes (un hub, une langue). Ne pas croiser 10×5 langues.",
+    )
     args = parser.parse_args()
 
+    requetes = (
+        REQUETES_ACTUALITES_PAR_HUB if args.par_hub else REQUETES_ACTUALITES
+    )
     client = NewsApiClient()
     logger.info(
-        "Collecte NewsAPI : %s requête(s), depuis=%s, jusqua=%s. Clé non loguée.",
-        len(REQUETES_ACTUALITES),
+        "Collecte NewsAPI : %s requête(s), par_hub=%s, depuis=%s, jusqua=%s. "
+        "Clé non loguée.",
+        len(requetes),
+        args.par_hub,
         args.depuis,
         args.jusqua,
     )
     donnees_actualites = client.recuperer_actualites_aeroportuaires(
+        requetes=requetes,
         date_depuis=args.depuis,
         date_jusqua=args.jusqua,
     )

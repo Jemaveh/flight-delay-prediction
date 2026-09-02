@@ -1,7 +1,7 @@
-# iRapport final — Consommation, déploiement et automatisation
+# Rapport final — Consommation, déploiement et automatisation
 
 > **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
-> **Statut** : Brouillon — sections techniques pré-remplies, sections "Discussion" à compléter **Livrable** : Rapport final — consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
+> **Statut** : Brouillon. Livrable : consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
 > **Phases internes** : le déploiement et l'automatisation relèvent surtout de la Phase 4 ; ce document consolide aussi les phases 1 à 3.
 
 > **Rappel méthodologique** : le rapport final n'est pas une juxtaposition des Rendus 1, 2 et 3. Avant la soutenance, relire et mettre à jour ces trois rendus, puis les résumer ici plutôt que de les recopier tels quels.
@@ -10,9 +10,9 @@
 
 ## 1. Synthèse consolidée des rendus précédents
 
-- **Synthèse Rendu 1** (Découverte & exploration) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu1_decouverte_exploration.md`]
-- **Synthèse Rendu 2** (Organisation et modélisation **des données**) : [À COMPLÉTER — résumé en 5-10 lignes, avec liens vers `docs/rendu2_organisation_modelisation.md`]
-- **Synthèse Rendu 3** (Machine Learning) : [À COMPLÉTER — résumé en 5-10 lignes, avec lien vers `docs/rendu3_machine_learning.md`]
+- **Synthèse Rendu 1** (Découverte & exploration) : trois APIs (OpenSky, OpenWeather, NewsAPI), ingestion automatisée, profiling. Aucune n'expose un horaire programmé : un retard « réel − prévu » n'est pas dans le contrat de données (`docs/rendu1_decouverte_exploration.md`).
+- **Synthèse Rendu 2** (Organisation et modélisation **des données**) : schéma en étoile PostgreSQL, ETL incrémental, `retard_minutes` = proxy (durée vs médiane de route), pas un slot DGAC. Un CSV BTS n'entre pas dans `fact_flights` (`docs/rendu2_organisation_modelisation.md`).
+- **Synthèse Rendu 3** (Machine Learning) : cible livrée = **durée ADS-B**. LightGBM ne bat pas une médiane. BERT et Open-Meteo testés, sans débloquer un retard. Trois chemins pour l'avoir vraiment : CSV US (Kaggle), 4e source d'horaires Europe, ou reformuler la question — seul le troisième est celui du projet (`docs/rendu3_machine_learning.md` § 8).
 
 ---
 

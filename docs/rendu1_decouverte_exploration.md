@@ -29,10 +29,10 @@
   1. **Collecte** : Extraire automatiquement 3 sources de données hétérogènes via API (vols, météo, actualités).
   2. **Structuration** : Nettoyer, normaliser et fusionner ces sources dans un schéma de données cohérent (voir Rendu 2).
   3. **Automatisation** : Construire des scripts d'ingestion réutilisables et paramétrables (pas de collecte manuelle).
-  4. **Mise à disposition** : Rendre les données exploitables pour un cas d'usage concret (prédiction de retard, voir Rendu 3 — Machine Learning).
+  4. **Mise à disposition** : Rendre les données exploitables pour un cas d'usage (durée de vol observée / tentative de retard — le Rendu 3 précise ce que les sources permettent réellement de prédire).
 - **Niveau d'expertise de l'équipe vis-à-vis de l'ingestion/transformation/stockage** : Une expérience déjà significative en data/analytics précédait ce projet, ce qui a permis de concentrer l'effort d'apprentissage sur les compétences plus spécifiquement liées à l'ingénierie de données : conception de pipelines d'ingestion automatisés, architecture de stockage relationnelle et conteneurisation, moins pratiquées jusqu'ici.
 - **Échanges avec des experts techniques ou métiers** : Ce projet a été mené en autonomie complète, sans échange complémentaire avec des experts du secteur aérien ou de la donnée en dehors du cadre d'encadrement standard de la formation.
-- **Projet similaire connu** : De nombreux projets de prédiction de retards de vols existent sur Kaggle, notamment à partir des données du Bureau of Transportation Statistics américain. Ces projets ont servi de source d'inspiration pour la définition du périmètre et de l'approche de ce projet.
+- **Projet similaire connu** : De nombreux projets de prédiction de retards existent sur Kaggle, à partir des données du Bureau of Transportation Statistics américain. Ces fichiers contiennent déjà l'horaire programmé et le retard. Ils ont inspiré le *thème* du projet ; ils ne décrivent pas le contrat de nos trois APIs (détail : Rendu 3 § 8).
 
 ---
 
@@ -73,7 +73,7 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
 ### 2.2 Pertinence
 
 - **Données les plus pertinentes au regard des objectifs** :
-  - OpenSky → variable cible potentielle (retard estimé via écart horaire) + features (compagnie, aéroport origine/destination, altitude/vitesse).
+  - OpenSky → trajectoire observée (`first_seen` / `last_seen`) : on en dérive une **durée**, pas un retard d'horaire (aucune des trois APIs n'expose l'heure prévue ; voir Rendu 3).
   - OpenWeather → features météo (vent, précipitations, visibilité) sur les aéroports de départ/arrivée.
   - NewsAPI + BERT → score de sentiment agrégé par jour/zone, comme proxy de perturbation (grève, incident).
 - **Formats manipulés** : JSON en sortie d'API (toutes les sources), converti en tabulaire (pandas DataFrame / Parquet) pour le stockage intermédiaire.
@@ -81,6 +81,7 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
   - **Rate limiting** : OpenWeather et NewsAPI limitent le nombre d'appels en offre gratuite (nécessite une stratégie de cache/pagination et un espacement des appels).
   - **Authentification** : OpenSky nécessite un compte (Basic Auth / OAuth2 selon version d'API).
   - **Qualité d'origine** : Les données OpenSky peuvent contenir des valeurs manquantes (aéronefs hors couverture des récepteurs ADS-B) ; les articles NewsAPI ne sont pas garantis pertinents à 100 % (nécessité de filtrage par mots-clés).
+  - **Pas d'horaire programmé** : OpenSky, OpenWeather et NewsAPI ne donnent pas l'heure de départ ou d'arrivée **annoncée**. Un retard au sens du règlement 261/2004 (ou des jeux Kaggle BTS) est *heure réelle − heure prévue*. Sans l'heure prévue, cette cible n'est pas mesurable. Les projets Kaggle cités en § 1.2 partent de CSV américains qui ont déjà cette colonne ; ce n'est pas le contrat de nos trois APIs. Conséquence pour le modèle : Rendu 3.
 
 ---
 
@@ -124,7 +125,7 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
   - OpenWeather : aucune valeur hors bornes physiques détectée sur les cinq variables vérifiées (température, humidité, pression, vent, visibilité) ; deux champs (`rain.1h`, `wind.gust`) partiellement absents mais de façon structurelle, pas aléatoire. L'encodage français est conforme, de même que les unités (°C, m/s) demandées via `units=metric`, vérifiées sur les ordres de grandeur observés et pas seulement sur le paramètre d'appel. La cohérence entre `main.temp`, `main.feels_like` et l'encadrement `main.temp_min`/`main.temp_max` est vérifiée sans anomalie, avec un point de vigilance : l'encadrement peut être dégénéré (les trois valeurs égales) sur certains aéroports, ce qui le rend inexploitable comme feature à lui seul.
   - NewsAPI : aucun doublon d'URL entre les cinq requêtes mots-clés/langue sur la capture explorée, mais des titres identiques sous des URLs différentes (même article republicé, ou slug variant) — la déduplication future ne pourra pas se limiter à l'URL. Aucune balise ni entité HTML résiduelle dans les titres et descriptions, et aucune URL mal formée : le texte arrive déjà nettoyé côté fournisseur. Le champ `publishedAt` est bien en UTC ; le tampon de collecte était en heure locale naïve (bug corrigé dans le module d'ingestion, biais d'environ 2 h sur le calcul d'âge, impact limité au vu d'un âge moyen d'environ 6,8 jours). Une pollution par mots-clés a également été identifiée (des articles sur des tensions géopolitiques remontés par le mot-clé anglais générique "airspace closure", sans rapport avec des retards de vols commerciaux) et le champ `content` est systématiquement tronqué par l'API.
 - **Conclusions pour la future organisation et modélisation des données** :
-  - La granularité retenue diffère par nature de source : par avion et par instant pour OpenSky, par aéroport et par capture pour OpenWeather, par article pour NewsAPI — la jointure entre les trois sources se fera au niveau du couple (aéroport, date/heure) dans le schéma en étoile (Rendu 2), après agrégation temporelle de NewsAPI (ex : score de sentiment moyen par jour) plutôt qu'un rattachement article par article à un vol précis.
+  - La granularité retenue diffère par nature de source : par avion et par instant pour OpenSky, par aéroport et par capture pour OpenWeather, par article pour NewsAPI — la jointure entre les trois sources se fera au niveau du couple (aéroport, date/heure) dans le schéma en étoile (Rendu 2), après agrégation temporelle de NewsAPI (ex : score de sentiment moyen par jour) plutôt qu'un rattachement article par article à un vol précis. **Point d'attention pour le ML** : sans horaire programmé dans ces sources, la cible « retard » au sens Kaggle / 261/2004 n'est pas calculable (Rendu 3 § 8).
   - Colonnes déjà exclues lors du nettoyage démontré dans les notebooks : `sensors` (OpenSky, vide à 100 %), le champ `weather` brut d'OpenWeather (remplacé par `description_ciel`), et `content` de NewsAPI (tronqué, non exploitable comme texte). Le script générique de la Phase 2 reprendra ces mêmes exclusions de façon automatisée sur l'ensemble des captures.
   - La répartition par langue très déséquilibrée observée sur NewsAPI (dominée par l'anglais) devra être prise en compte lors du choix du modèle BERT d'analyse de sentiment (Rendu 3), sans que ce choix soit arrêté à ce stade du projet.
 

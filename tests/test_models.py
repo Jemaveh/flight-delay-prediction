@@ -331,6 +331,16 @@ def test_lightgbm_predit_sans_colonne_interdite() -> None:
     assert "last_seen" not in list(modele.feature_name_)
 
 
+def test_pipeline_entraine_b_si_le_diagnostic_propose_c() -> None:
+    """Vérifie qu'on reste sur la durée même si le proxy retard est peuplé."""
+    df = cadre_synthetique(n=max(80, SEUIL_MIN_LIGNES_ENTRAINEMENT + 10), sans_meteo=0)
+    df["retard_minutes"] = 5.0
+    rapport = executer_pipeline(jeu=df, fraction_train=0.7, sauvegarder=False)
+    assert rapport["code_cible"] == "B"
+    assert rapport["code_cible_diagnostic"] == "C"
+    assert rapport["cible"] == "duree_minutes"
+
+
 def test_pipeline_exclut_une_duree_de_23h() -> None:
     """Vérifie que le pipeline retire un vol dont last_seen est 23 h après first_seen."""
     df = cadre_synthetique(n=max(80, SEUIL_MIN_LIGNES_ENTRAINEMENT + 10), sans_meteo=0)

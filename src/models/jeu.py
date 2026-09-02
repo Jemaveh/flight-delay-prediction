@@ -3,8 +3,8 @@ Construction du jeu vol + météo (+ actualités journalières) depuis l'entrep�
 
 Cible : duree_minutes = last_seen − first_seen.
 Jointure actualités : date UTC de first_seen → dim_news_sentiment.
-Pas d'appel NewsAPI, pas de BERT : nb_articles et un proxy lexical
-sur les mots-clés déjà stockés (score_sentiment s'il n'est pas NULL).
+Pas d'appel NewsAPI ni BERT ici : nb_articles et un proxy
+(score_sentiment s'il est déjà en base, sinon lexique sur mots_cles).
 """
 
 from __future__ import annotations
@@ -26,11 +26,9 @@ NOM_CIBLE = "duree_minutes"
 CODE_CIBLE = "B"
 SEUIL_MIN_LIGNES_ENTRAINEMENT = 50
 FRACTION_TRAIN_DEFAUT = 0.70
-# Plafond de durée observée : au-delà, first_seen/last_seen ADS-B ne mesurent
-# plus un vol (trou de tracking, avion revu le lendemain). 8 h couvre les
-# liaisons entre les dix hubs européens (p99 du jeu ~4,4 h) ; le max brut
-# observé dépasse 23 h. On filtre, on ne winsorise pas : caper à 480 min
-# traiterait encore un artefact comme un vol de 8 h.
+# Plafond ADS-B : au-delà, first_seen/last_seen ne mesurent plus un vol
+# (trou de tracking). 8 h couvre les liaisons entre les dix hubs ; les
+# durées plus longues sont exclues, pas winsorisées.
 SEUIL_DUREE_MAX_MINUTES = 8 * 60
 # Heure UTC « assez peuplée » pour une médiane locale ; sinon médiane globale.
 SEUIL_MIN_OBS_HEURE = SEUIL_MIN_VOLS_ROUTE

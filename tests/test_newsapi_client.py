@@ -18,6 +18,7 @@ import pytest
 import requests
 
 from src.ingestion.newsapi_client import (
+    REQUETES_ACTUALITES_PAR_HUB,
     ErreurAPINewsAPI,
     NewsApiClient,
     RequeteActualites,
@@ -207,6 +208,7 @@ def test_recuperer_actualites_aeroportuaires_boucle_sur_chaque_requete(mocker) -
     assert len(resultat["requetes"]) == 2
     assert resultat["requetes"][0]["langue_requete"] == "en"
     assert resultat["requetes"][0]["mots_cles"] == '"airport strike"'
+    assert resultat["requetes"][0]["code_icao"] is None
     assert resultat["requetes"][1]["langue_requete"] == "fr"
     assert resultat["requetes"][0]["resultat"] == {
         "status": "ok",
@@ -284,3 +286,11 @@ def test_sauvegarder_donnees_brutes_cree_un_fichier_avec_le_bon_contenu(
 
     contenu_relu = json.loads(chemin_fichier.read_text(encoding="utf-8"))
     assert contenu_relu == donnees
+
+
+def test_requetes_par_hub_sont_dix_icao_uniques() -> None:
+    """Vérifie 10 requêtes, un ICAO catalogue chacun, pas de croisement langues."""
+    icaos = [requete.code_icao for requete in REQUETES_ACTUALITES_PAR_HUB]
+    assert len(REQUETES_ACTUALITES_PAR_HUB) == 10
+    assert None not in icaos
+    assert len(set(icaos)) == 10

@@ -248,6 +248,7 @@ def aplatir_actualites(donnees: dict) -> pd.DataFrame:
                 {
                     "mots_cles": requete.get("mots_cles"),
                     "langue_requete": requete.get("langue_requete"),
+                    "icao_requete": requete.get("code_icao"),
                     "title": article.get("title"),
                     "description": article.get("description"),
                     "url": article.get("url"),

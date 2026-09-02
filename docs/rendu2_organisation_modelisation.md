@@ -88,6 +88,8 @@ Les sources se rejoignent par des clés, pas par une fusion « à plat » :
 - Le sentiment (`dim_news_sentiment`) est agrégé par jour → jointure via `date_id`. Aucune clé article↔vol n'existe dans les sources ; je ne l'invente pas. La table est dans l'entrepôt même si le premier modèle ML (Phase 3) partira de vol + météo si le temps est compté. `score_sentiment` reste NULL tant que BERT n'a pas tourné.
 - `retard_minutes` : OpenSky `/flights/*` n'expose pas d'horaire programmé. La colonne est nullable. Un proxy (durée observée vs médiane de la route) n'est calculé que s'il y a assez d'historique ; je n'invente pas un slot théorique type DGAC. Premier chargement : entièrement NULL. Après le second cycle : 11 vols avec proxy, 961/972 encore NULL (effectif de route souvent insuffisant, destinations souvent manquantes).
 
+Pour un **retard d'horaire** (cible des projets Kaggle / du règlement 261/2004), il aurait fallu une **quatrième source** : un horaire publié, joint au vol. Un CSV BTS américain ne se verse pas dans `fact_flights` : autre pays, autre grain, autres colonnes. Il irait dans une table à part, ou on aurait choisi ce jeu **à la place** d'OpenSky dès le cadrage. Détail des trois chemins : Rendu 3, section « Ce qu'il aurait fallu pour prédire un retard ».
+
 ---
 
 ## 2. Documentation technique
