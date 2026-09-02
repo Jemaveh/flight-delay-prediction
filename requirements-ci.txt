@@ -1,0 +1,21 @@
+# Dépendances GitHub Actions / pytest (sans torch, Jupyter, ydata-profiling).
+# Les tests mockent le réseau et sautent PostgreSQL s'il n'est pas joignable.
+
+pydantic==2.9.2
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+pandas==2.2.3
+numpy==1.26.4
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36
+lightgbm==4.5.0
+scikit-learn==1.5.2
+joblib==1.4.2
+fastapi==0.115.6
+uvicorn==0.32.1
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.2
+httpx==0.27.2
+requests==2.32.3
+pytest==8.3.3
+pytest-mock==3.14.0

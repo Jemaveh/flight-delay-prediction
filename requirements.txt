@@ -39,6 +39,8 @@ jupyter==1.1.1
 # --- API FastAPI (Phase 4) ---
 fastapi==0.115.6
 uvicorn==0.32.1
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.0.2
 httpx==0.27.2
 
 # --- Tests ---

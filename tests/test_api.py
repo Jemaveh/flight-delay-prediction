@@ -147,3 +147,32 @@ def test_predict_ignore_last_seen_s_il_est_envoye(
     reponse = client_avec_modele.post("/predict", json=corps)
     assert reponse.status_code == 200
     assert reponse.json()["duree_minutes_predite"] == pytest.approx(87.5)
+
+
+def test_metrics_expose_le_format_prometheus(client_sans_modele: TestClient) -> None:
+    """Vérifie GET /metrics : scrape Prometheus, jauge joblib à 0."""
+    client_sans_modele.get("/health")
+    reponse = client_sans_modele.get("/metrics")
+    assert reponse.status_code == 200
+    assert "text/plain" in reponse.headers["content-type"]
+    corps = reponse.text
+    assert "airlines_modele_charge 0.0" in corps
+    assert "http_request_duration_seconds" in corps
+
+
+def test_metrics_jauge_modele_apres_chargement(
+    client_avec_modele: TestClient,
+) -> None:
+    """Vérifie que la jauge passe à 1 une fois le joblib chargé."""
+    client_avec_modele.get("/health")
+    corps = client_avec_modele.get("/metrics").text
+    assert "airlines_modele_charge 1.0" in corps
+
+
+def test_metrics_compte_un_predict_sans_modele(
+    client_sans_modele: TestClient,
+) -> None:
+    """Vérifie le compteur métier statut=absent sur un POST 503."""
+    client_sans_modele.post("/predict", json=_corps_valide())
+    corps = client_sans_modele.get("/metrics").text
+    assert 'airlines_predictions_total{statut="absent"}' in corps

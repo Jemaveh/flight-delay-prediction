@@ -1,6 +1,6 @@
 # Airlines Delay Prediction
 
-> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI + Compose (service `api`) + Airflow LocalExecutor (profil `airflow`).
+> Projet d'évaluation — Titre RNCP 38919 (Data Engineer). Statut : Phase 1 terminée — Phase 2 terminée côté code (Rendu 2 encore brouillon) — Phase 3 / **Rendu 3** (Machine Learning) en cours (vol + météo) — Phase 4 : API FastAPI + Compose (service `api`) + Prometheus/Grafana (profil `monitoring`) + Airflow SequentialExecutor (profil `airflow`).
 
 ## Correspondance entre les phases du projet et les rendus
 
@@ -29,7 +29,7 @@ Prédire les retards de vols en combinant trois sources de données hétérogèn
 
 La Phase 1 a mis en place l'ingestion et l'exploration des trois sources (modules d'ingestion, notebooks, tests unitaires, Rendu 1). La Phase 2 est **terminée côté code** : schéma PostgreSQL en étoile, pipeline ETL et ERD. Le Rendu 2 reste un **brouillon** (modélisation de données, pas de Machine Learning) ; relecture prévue plus tard, sans le marquer Final pour l'instant.
 
-Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM), y compris un score BERT agrégé par jour (`docs/experience_actualites_bert.md`). Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow (profil Compose `airflow`, SequentialExecutor) orchestre ensuite collecte → ETL → entraînement. Prometheus n'est pas encore branché.
+Le **Rendu 3** est le rapport de **Machine Learning** (Phase 3) : premier modèle vol + météo + actualités jointes par date (régression de la durée observée, LightGBM), y compris un score BERT agrégé par jour (`docs/experience_actualites_bert.md`). Le **rapport final** (Phase 4) couvre la consommation, le déploiement et l'automatisation — ce n'est plus « le Rendu 3 ». L'API FastAPI (consommation du `joblib`) est en place ; `docker compose up` lance le service `api`. PostgreSQL reste l'instance locale Phase 2. Airflow (profil Compose `airflow`, SequentialExecutor) orchestre ensuite collecte → ETL → entraînement. Prometheus + Grafana (profil `monitoring`) scrapent `GET /metrics` ; ne pas combiner avec le profil `airflow` sur le PC 8 Go.
 
 ## Architecture du projet
 
@@ -39,9 +39,10 @@ src/
 ├── processing/    # Nettoyage, ETL vers l'étoile, collecte hubs
 ├── database/      # Connexion PostgreSQL et schéma en étoile (Phase 2, terminée)
 ├── models/        # Premier modèle vol + météo (durée observée, LightGBM)
-├── api/           # API FastAPI : GET /health, POST /predict, doc /docs
+├── api/           # API FastAPI : GET /health, GET /metrics, POST /predict, doc /docs
 └── utils/         # Logging et chemins relatifs à la racine du projet
 dags/              # DAG Airflow quotidien (collecte → ETL → entraînement)
+monitoring/        # Prometheus (scrape) + Grafana (tableaux provisionnés)
 notebooks/         # Exploration des 3 sources, modélisation vol/météo, sentiment BERT
 tests/             # Tests unitaires (ingestion, schéma, ETL, modèle, API, Compose, DAG)
 ```
@@ -65,6 +66,12 @@ Smoke unique (un hub, ~2 h) : `python -m src.ingestion.opensky_client --smoke` �
 
 `DATABASE_URL` pointe vers l'instance PostgreSQL locale utilisée par le schéma en étoile, l'ETL et l'entraînement (`python -m src.models.entrainer`).
 
+## CI (GitHub Actions)
+
+À chaque push (et pull request) vers `main`, GitHub lance `pytest` sur Ubuntu : `.github/workflows/tests.yml`, dépendances `requirements-ci.txt` (sans torch). Un `.env` est copié depuis `.env.example` (placeholders, **pas** les clés réelles). PostgreSQL n'est pas démarré : les tests `@pytest.mark.postgres` sont ignorés s'il n'est pas joignable. Aucun secret n'est stocké dans le workflow.
+
+En local : `python -m pytest -q`.
+
 ## Lancer l'API FastAPI (Phase 4)
 
 L'API sert le fichier `models/modele_vol_meteo.joblib` (gitignoré). Sans ce fichier, `GET /health` répond quand même ; `POST /predict` renvoie **503**. Entraîner d'abord : `python -m src.models.entrainer`.
@@ -79,9 +86,8 @@ python -m uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000
 - Santé : http://127.0.0.1:8000/health
 - Documentation OpenAPI (native FastAPI) : http://127.0.0.1:8000/docs
 - Prédiction : `POST /predict` (corps JSON = features de `src/models/jeu.py`, cible = durée observée en minutes, pas un retard d'horaire)
+- Métriques Prometheus : http://127.0.0.1:8000/metrics
 - Expérience archive météo / proxy OD (hors API) : `python -m src.models.experience_proxy_retard`
-
-`GET /metrics` Prometheus n'est pas exposé pour l'instant (cours Monitoring).
 
 ## Lancer l'API dans Docker
 
@@ -98,6 +104,20 @@ Puis les mêmes URLs : http://127.0.0.1:8000/health et http://127.0.0.1:8000/doc
 Arrêt : `Ctrl+C` puis `docker compose down`.
 
 PostgreSQL **métier** n'est **pas** publié par ce Compose (conflit avec l'instance Windows déjà utilisée par l'ETL). L'image API n'embarque pas torch (`requirements-api.txt`).
+
+## Monitoring Prometheus + Grafana (Phase 4)
+
+Profil Compose **`monitoring`** : scrape de l'API déjà en service, pas de l'orchestration Airflow. Ne pas combiner `--profile monitoring` et `--profile airflow` sur le PC (RAM).
+
+```bash
+docker compose --profile monitoring up --build
+```
+
+- Prometheus (cibles) : http://127.0.0.1:9090/targets — job `airlines-api` vers `api:8000` (réseau Compose, pas `localhost` du PC)
+- Grafana : http://127.0.0.1:3000 — compte **`admin` / `admin`** (UI, pas l'entrepôt). Tableau **API durée observée** (provisionné).
+- Arrêt : `docker compose --profile monitoring down`
+
+Rétention Prometheus : 24 h (`--storage.tsdb.retention.time=24h`). Les tableaux Grafana sont des fichiers versionnés (`monitoring/grafana/`), pas un volume de données.
 
 ## Orchestration Airflow (Phase 4)
 
@@ -129,6 +149,6 @@ Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
 - **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités ; BERT agrégé par jour, notebook `05_sentiment_bert.ipynb` ; expérience hub/flags/J−1 : `python -m src.models.experience_actu --avec-bert` ; expérience Open-Meteo + proxy OD : `python -m src.models.experience_proxy_retard`)
-- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow `standalone` (`--profile airflow`) ; Prometheus ensuite si le temps le permet (**rapport final**)
+- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; CI pytest (GitHub Actions) ; Prometheus + Grafana (`--profile monitoring`) ; Airflow SequentialExecutor (`--profile airflow`, démo VM)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.

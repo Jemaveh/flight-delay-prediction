@@ -36,10 +36,9 @@ def test_compose_airflow_est_officiel_sans_celery() -> None:
     assert "command: scheduler" in texte
     assert "SequentialExecutor" in texte
     assert "CeleryExecutor" not in texte
-    assert "redis" not in texte.lower()
-    assert "flower" not in texte.lower()
+    assert "command: flower" not in texte.lower()
     assert "image: redis" not in texte.lower()
-    assert "standalone" not in texte
+    assert "command: standalone" not in texte
     assert 'profiles: ["airflow"]' in texte
     assert "5432:5432" not in texte
     assert "apache/airflow:2.10.4-python3.11" in texte

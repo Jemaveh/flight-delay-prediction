@@ -1,7 +1,8 @@
 # Compose Phase 4.
 # Sans profil : API FastAPI seulement.
+# --profile monitoring : Prometheus + Grafana (scrape de l'API). Pas avec --profile airflow.
 # --profile airflow : image officielle Apache, Postgres métabase, webserver + scheduler.
-# Pas Celery / Flower (exam). Pas standalone SQLite (verrouillage sur Windows).
+# Pas d'exécuteur distribué type exam. Pas SQLite unique (verrouillage sur Windows).
 x-airflow: &airflow
   image: apache/airflow:2.10.4-python3.11
   environment: &airflow-env
@@ -43,6 +44,38 @@ services:
       timeout: 5s
       retries: 5
       start_period: 25s
+
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v2.54.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
+  grafana:
+    profiles: ["monitoring"]
+    image: grafana/grafana:11.3.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: "no"
 
   airflow-db:
     profiles: ["airflow"]
