@@ -1,30 +1,19 @@
 # Compose Phase 4.
-# Sans profil : API FastAPI seulement (Windows, Postgres métier déjà sur 5432).
-# --profile airflow : LocalExecutor (webserver, scheduler, métabase Airflow).
-# La métabase Airflow n'est pas l'entrepôt vols/météo. Aucun port 5432 publié.
-x-airflow-common: &airflow-common
-  build:
-    context: .
-    dockerfile: Dockerfile.airflow
-  user: "${AIRFLOW_UID:-50000}:0"
-  env_file:
-    - .env
-  environment: &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+# Sans profil : API FastAPI seulement.
+# --profile airflow : image officielle Apache, Postgres métabase, webserver + scheduler.
+# Pas Celery / Flower (exam). Pas standalone SQLite (verrouillage sur Windows).
+x-airflow: &airflow
+  image: apache/airflow:2.10.4-python3.11
+  environment: &airflow-env
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+    AIRFLOW__CORE__EXECUTOR: SequentialExecutor
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
-    PYTHONPATH: /opt/airflow
-    DATABASE_URL: ${DATABASE_URL_CONTENEUR:-${DATABASE_URL}}
+    AIRFLOW__WEBSERVER__WORKERS: "1"
+    AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: "300"
+    AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: "300"
   volumes:
     - ./dags:/opt/airflow/dags
-    - ./src:/opt/airflow/src
-    - ./config:/opt/airflow/config
-    - ./data:/opt/airflow/data
-    - ./models:/opt/airflow/models
-    - ./logs/airflow:/opt/airflow/logs
-  extra_hosts:
-    - "host.docker.internal:host-gateway"
   depends_on:
     airflow-db:
       condition: service_healthy
@@ -73,19 +62,19 @@ services:
     restart: unless-stopped
 
   airflow-init:
-    <<: *airflow-common
+    <<: *airflow
     profiles: ["airflow"]
     restart: "no"
     environment:
-      <<: *airflow-common-env
+      <<: *airflow-env
       _AIRFLOW_DB_MIGRATE: "true"
       _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
     command: version
 
   airflow-webserver:
-    <<: *airflow-common
+    <<: *airflow
     profiles: ["airflow"]
     command: webserver
     ports:
@@ -95,16 +84,10 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
-      interval: 20s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
     restart: unless-stopped
 
   airflow-scheduler:
-    <<: *airflow-common
+    <<: *airflow
     profiles: ["airflow"]
     command: scheduler
     depends_on:

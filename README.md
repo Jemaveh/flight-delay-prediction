@@ -106,17 +106,18 @@ Le DAG `dags/pipeline_quotidien.py` enchaîne, **une fois par jour**, les mêmes
 2. `python -m src.processing.etl`
 3. `python -m src.models.entrainer`
 
-Ce n'est **pas** le Compose Celery de l'exam météo (pas de Redis, pas de Flower, pas de cron à la minute). Executor : **LocalExecutor**. Le Postgres du profil `airflow` est la **métabase Airflow** (interne, aucun `5432:5432`). L'entrepôt vols/météo reste `DATABASE_URL`.
+Ce n'est **pas** le Compose Celery de l'exam météo (pas de Redis, pas de Flower, pas de cron à la minute). Image officielle `apache/airflow:2.10.4-python3.11` : Postgres métabase (interne) + webserver + scheduler, SequentialExecutor. Seul `dags/` est monté. L'entrepôt vols/météo reste `DATABASE_URL`.
 
-Les DAG naissent **en pause** : un `compose up` ne lance pas de collecte OpenSky (quota 4000 crédits / jour).
-
-Dans `.env`, décommenter et aligner `DATABASE_URL_CONTENEUR` (hôte `host.docker.internal`, pas `localhost`) **avant** de lancer Airflow. Le venv Windows continue d'utiliser `DATABASE_URL` en `localhost`.
+Les DAG naissent **en pause**.
 
 ```bash
-docker compose --profile airflow up --build
+docker compose --profile airflow down
+docker compose --profile airflow up -d
 ```
 
-Interface : http://127.0.0.1:8080 (compte local par défaut `airflow` / `airflow`). Activer le DAG `pipeline_quotidien` seulement quand une collecte est voulue. Arrêt : `Ctrl+C` puis `docker compose --profile airflow down`.
+Interface : http://127.0.0.1:8080 — compte **`airflow` / `airflow`** (UI, pas l'entrepôt). DAG `pipeline_quotidien` en pause. Arrêt : `docker compose --profile airflow down`.
+
+
 
 Sur la VM école : les mêmes commandes, une seule horloge (ne pas faire tourner le DAG à la fois sur le PC et sur la VM).
 
@@ -127,6 +128,6 @@ Collecte OpenSky des hubs : `python -m src.processing.collecter_hubs --hubs LTFM
 - **Phase 1** — Ingestion et Data Profiling : **terminée**
 - **Phase 2** — Schéma BDD en étoile et Pipeline ETL : **terminée côté code** (PostgreSQL, étoile, ETL, ERD) ; Rendu 2 encore brouillon
 - **Phase 3** — Machine Learning et Évaluation (**Rendu 3**) : **en cours** (premier modèle vol + météo + actualités jointes par date ; BERT ensuite si le temps le permet)
-- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow LocalExecutor (`--profile airflow`) ; Prometheus ensuite si le temps le permet (**rapport final**)
+- **Phase 4** — API FastAPI + `docker compose` (service `api`) ; Airflow `standalone` (`--profile airflow`) ; Prometheus ensuite si le temps le permet (**rapport final**)
 
 Le README sera complété en détail à l'issue du projet. Voir le dossier `docs/` pour les rapports des phases et des livrables officiels.

@@ -1,5 +1,7 @@
 # Dépendances métier dans l'image Airflow (collecte, ETL, LightGBM).
 # Pas de torch / Jupyter / ydata-profiling. Airflow lui-même vient de l'image.
+# SQLAlchemy n'est PAS listé : Airflow 2.10.4 impose 1.4.54. Un pin 2.0.x
+# (celui du venv projet) fait crasher webserver et scheduler.
 
 pydantic==2.9.2
 pydantic-settings==2.6.1
@@ -8,7 +10,6 @@ requests==2.32.3
 pandas==2.2.3
 numpy==1.26.4
 psycopg2-binary==2.9.10
-SQLAlchemy==2.0.36
 lightgbm==4.5.0
 scikit-learn==1.5.2
 joblib==1.4.2

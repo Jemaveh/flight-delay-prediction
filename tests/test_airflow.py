@@ -30,14 +30,19 @@ def test_dag_quotidien_enchaine_collecte_etl_train_sans_newsapi() -> None:
     assert "BashOperator" in texte
 
 
-def test_compose_airflow_est_local_executor_sans_celery() -> None:
+def test_compose_airflow_est_officiel_sans_celery() -> None:
     texte = _texte_compose()
-    assert "LocalExecutor" in texte
+    assert "command: webserver" in texte
+    assert "command: scheduler" in texte
+    assert "SequentialExecutor" in texte
     assert "CeleryExecutor" not in texte
     assert "redis" not in texte.lower()
     assert "flower" not in texte.lower()
+    assert "image: redis" not in texte.lower()
+    assert "standalone" not in texte
     assert 'profiles: ["airflow"]' in texte
     assert "5432:5432" not in texte
+    assert "apache/airflow:2.10.4-python3.11" in texte
 
 
 def test_dockerfile_airflow_tag_figure() -> None:
