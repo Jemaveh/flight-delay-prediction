@@ -22,6 +22,7 @@ def test_compose_api_injecte_env_et_monte_le_modele() -> None:
     assert "env_file:" in texte
     assert "./models:/app/models" in texte
     assert "5432:5432" not in texte
+    assert 'profiles: ["api", "monitoring"]' in texte
 
 
 def test_compose_monitoring_est_un_profil_separe() -> None:

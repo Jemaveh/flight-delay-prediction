@@ -1,7 +1,7 @@
 # Compose Phase 4.
-# Sans profil : API FastAPI seulement.
-# --profile monitoring : Prometheus + Grafana (scrape de l'API). Pas avec --profile airflow.
-# --profile airflow : image officielle Apache, Postgres métabase, webserver + scheduler.
+# --profile api : FastAPI seulement.
+# --profile monitoring : API + Prometheus + Grafana. Pas avec --profile airflow.
+# --profile airflow : métabase + webserver + scheduler (l'API a un profil, elle ne démarre plus toute seule).
 # Pas d'exécuteur distribué type exam. Pas SQLite unique (verrouillage sur Windows).
 x-airflow: &airflow
   image: apache/airflow:2.10.4-python3.11
@@ -21,6 +21,7 @@ x-airflow: &airflow
 
 services:
   api:
+    profiles: ["api", "monitoring"]
     build:
       context: .
       dockerfile: Dockerfile
