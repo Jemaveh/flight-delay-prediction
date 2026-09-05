@@ -1,94 +1,184 @@
 # Rapport final — Consommation, déploiement et automatisation
 
-> **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)
-> **Statut** : Brouillon. Livrable : consommation, déploiement et automatisation. Le Machine Learning a son propre rendu (`docs/rendu3_machine_learning.md`).
-> **Phases internes** : le déploiement et l'automatisation relèvent surtout de la Phase 4 ; ce document consolide aussi les phases 1 à 3.
-
-> **Rappel méthodologique** : le rapport final n'est pas une juxtaposition des Rendus 1, 2 et 3. Avant la soutenance, relire et mettre à jour ces trois rendus, puis les résumer ici plutôt que de les recopier tels quels.
+> **Projet** : Airlines Delay Prediction — Titre RNCP 38919 (Data Engineer)  
+> **Statut** : Final
 
 ---
 
-## 1. Synthèse consolidée des rendus précédents
+## 1. Synthèse des rendus précédents
 
-- **Synthèse Rendu 1** (Découverte & exploration) : trois APIs (OpenSky, OpenWeather, NewsAPI), ingestion automatisée, profiling. Aucune n'expose un horaire programmé : un retard « réel − prévu » n'est pas dans le contrat de données (`docs/rendu1_decouverte_exploration.md`).
-- **Synthèse Rendu 2** (Organisation et modélisation **des données**) : schéma en étoile PostgreSQL, ETL incrémental, `retard_minutes` = proxy (durée vs médiane de route), pas un slot DGAC. Un CSV BTS n'entre pas dans `fact_flights` (`docs/rendu2_organisation_modelisation.md`).
-- **Synthèse Rendu 3** (Machine Learning) : cible livrée = **durée ADS-B**. LightGBM ne bat pas une médiane. BERT et Open-Meteo testés, sans débloquer un retard. Trois chemins pour l'avoir vraiment : CSV US (Kaggle), 4e source d'horaires Europe, ou reformuler la question — seul le troisième est celui du projet (`docs/rendu3_machine_learning.md` § 8).
+| Livrable | Essentiel |
+| --- | --- |
+| **Rendu 1** | Trois APIs, cadrage IN/OUT, personas, KPI, veille, SWOT. Aucun horaire programmé → pas de retard « réel − prévu ». |
+| **Rendu 2** | Étoile PostgreSQL, ETL incrémental. `retard_minutes` = proxy, pas un slot. Au 04/09 : **21 054** vols, **120** météos, **27** jours d'actu, **3 664** lignes modèle (~17 %). |
+| **Rendu 3** | Cible retenue = **option B** (régression de la durée observée, pas un retard). LightGBM **54,02** vs médiane **44,07**. BERT et Open-Meteo testés. Un vrai retard aurait demandé un CSV US ou une 4e source d'horaires : non livré. |
 
 ---
 
 ## 2. Gestion du code et bonnes pratiques
 
-- **Dépôt Git** : [À COMPLÉTER — lien vers le dépôt GitHub]
-- **Structure professionnelle** : Architecture modulaire en couches (`src/ingestion`, `src/processing`, `src/database`, `src/models`, `src/api`, `src/utils`, `config`) — chaque module a une responsabilité unique, testable indépendamment (voir `tests/`).
-- **Fichier de rejeu du projet** : `README.md` (racine) documente l'installation (`requirements.txt`, `.env.example`) et les commandes pour reproduire le pipeline de bout en bout.
-- **Gestion des secrets** : Toutes les clés d'API (OpenSky, OpenWeather, NewsAPI) et la chaîne de connexion à la base de données sont chargées via des **variables d'environnement** (fichier `.env`, jamais commité — voir `.gitignore`), validées au démarrage par `config/settings.py` (Pydantic `BaseSettings`). Aucun secret n'est écrit en dur dans le code source.
+- **Dépôt** : [https://github.com/Jemaveh/flight-delay-prediction](https://github.com/Jemaveh/flight-delay-prediction)
+- **Couches** : `src/ingestion`, `processing`, `database`, `models`, `api`, `utils`, `config` — une responsabilité par module, tests dans `tests/`.
+- **Rejeu** : `README.md` (install, `.env.example`, commandes).
+- **Pilotage** : projet solo ; suivi = journal de bord, Notion et Git. Feuille de route = table des phases du README. KPI / SWOT : Rendu 1.
+
+| Livré | Pas livré |
+| --- | --- |
+| FastAPI `/health`, `/predict`, `/metrics`, `/docs` (joblib) | Routes SQL métier, `5432` dans Compose |
+| Grafana = scrape de l'API | Carte d'avions, MLflow, drift, k8s |
+| CI GitHub Actions `pytest` | Jenkins, blue-green |
+| Airflow SequentialExecutor, DAG **en pause** | Trigger = collecte réelle sur le PC 8 Go |
 
 ---
 
 ## 3. Déploiement
 
-- **Mode de déploiement retenu** : Conteneurisation **Docker** via `docker compose` (v2). Service **API** (`Dockerfile`, `python:3.11.9-slim-bookworm`, pas `latest`) qui sert `POST /predict` (durée observée, pas un retard d'horaire). Le `joblib` est un **volume** `./models` (fichier gitignoré). Les secrets viennent de `env_file: .env`, pas du `Dockerfile`. PostgreSQL **métier** reste l'instance locale de la Phase 2 : aucun mapping `5432:5432` dans Compose. L'orchestration quotidienne est un profil **`airflow`** (image `apache/airflow:2.10.4-python3.11`) : métabase Postgres interne à Airflow, distincte de l'entrepôt. L'exécuteur retenu est **SequentialExecutor** (une tâche à la fois) : le DAG est linéaire (`collecte → ETL → entraînement`), le parallélisme d'un LocalExecutor n'apporte rien, et un stack Celery (Redis, workers) serait disproportionné par rapport à la RAM disponible. La commande `airflow standalone` (SQLite) n'est pas utilisée : verrouillage fichier sous Windows ; le Compose officiel sépare webserver, scheduler et métabase Postgres.
-- **Bonnes pratiques DevOps appliquées** :
-  - Tag d'image Python figé (`3.11.9-slim-bookworm`).
-  - `.dockerignore` (`.env`, `data/`, `venv/`, `credentials.json`).
-  - `healthcheck` HTTP sur `/health`.
-  - Dépendances API allégées : `requirements-api.txt` (sans torch / Jupyter).
+**Compose v2**, trois profils qui ne se cumulent pas sur 8 Go : `api` | `monitoring` (API + Prometheus + Grafana) | `airflow`.
 
-### 3.1 Endpoints de l'API développée (annexe technique anticipée)
+- Image API : `python:3.11.9-slim-bookworm` (pas `latest`), `requirements-api.txt` (sans torch).
+- `joblib` monté depuis `./models` (gitignoré). Secrets : `env_file: .env`, hors image.
+- Postgres **métier** = instance Windows Phase 2. Airflow a sa propre métabase (`airflow-db`).
+- SequentialExecutor : DAG linéaire. Pas de `airflow standalone` (SQLite / verrou Windows).
 
+**DevOps** : `.dockerignore` (`.env`, `data/`, `venv/`) ; `healthcheck` sur `/health`.
 
-| Endpoint      | Méthode | Description                                                                               |
-| ------------- | ------- | ----------------------------------------------------------------------------------------- |
-| `/health`     | GET     | Vérification de l'état de disponibilité du service (healthcheck)                          |
-| `/metrics`    | GET     | Exposition Prometheus (latence HTTP, jauge joblib, compteur `POST /predict`)              |
-| `/predict`    | POST    | Reçoit les features d'un vol (JSON), retourne la durée observée prédite (`duree_minutes`) |
-| `/docs`       | GET     | Documentation OpenAPI native FastAPI                                                      |
+### 3.1 API
 
+| Endpoint | Méthode | Rôle |
+| --- | --- | --- |
+| `/health` | GET | Disponibilité + jauge joblib |
+| `/metrics` | GET | Exposition Prometheus |
+| `/predict` | POST | Durée observée prédite (`duree_minutes`) |
+| `/docs` | GET | OpenAPI native |
 
-*(Schémas de requête/réponse : génération automatique via Swagger/OpenAPI, nativement fournie par FastAPI, visible sur `/docs`.)*
+![Documentation OpenAPI : durée observée, pas un retard](captures/annexe_api_docs_liste_endpoints.png)
+
+*Figure 1 — `/docs` : contrat = durée OpenSky, pas un écart à un horaire.*
+
+![POST /predict : réponse 200, durée prédite](captures/annexe_api_docs_predict_200.png)
+
+*Figure 2 — `POST /predict` consomme le `joblib` et renvoie `duree_minutes`.*
+
+### 3.2 Démo vs production
+
+C'est une **démo reproductible**, pas un 24/7.
+
+| | Démo (livrée) | Production (non appliquée, partie 3.4) |
+| --- | --- | --- |
+| API + Grafana | Profils `api` / `monitoring` | Même graphe, hôte dédié |
+| Airflow | UI / CLI, DAG **en pause** | Un Trigger = collecte + ETL + entraînement |
+| Collecte OpenSky | Scripts venv | Image `Dockerfile.airflow` + `src/` monté |
+
+Un Trigger n'est **pas** la démo de collecte. Profils `api` et `airflow` ne tournent pas ensemble sur mon PC perso.
+
+### 3.3 Rôle actuel d'Airflow
+
+Airflow **orchestre** les CLI déjà écrits (`collecter_hubs` → `etl` → `entrainer`). NewsAPI n'est pas dans le DAG.
+
+- Image officielle : seul `dags/` est monté → `python -m src...` ne peut pas s'exécuter dans le conteneur.
+- `DATABASE_URL` en `localhost` depuis Docker ≠ Postgres Windows.
+- Pause à la création : pas de salve automatique au `up`.
+- Collecte réelle = venv, une salve, quota maîtrisé.
+
+![Graphe Airflow pipeline_quotidien](captures/annexe_airflow_dag_graph2.png)
+
+*Figure 3 — `pipeline_quotidien` : trois tâches, NewsAPI absente, DAG en pause.*
+
+### 3.4 Bascule production : un Trigger = collecte + ETL + entraînement
+
+**But.** Airflow lance le batch quotidien. Un Trigger exécute `collecter_hubs` → `etl` → `entrainer`. L'API et Grafana restent des services à part : Airflow ne les démarre pas.
+
+**Non appliquée** sur le PC 8 Go, pour deux raisons distinctes.
+
+1. **Scripts absents du conteneur.** Le DAG `pipeline_quotidien` existe déjà (figure 3). Chaque tâche fait `python -m src...`. L'image officielle ne monte que `dags/` : le graphe est visible, pas le dossier `src/`. Un Trigger échoue (module introuvable). Ce n'est pas un DAG manquant.
+
+2. **RAM.** Les profils Compose `monitoring` (API + Prometheus + Grafana) et `airflow` (métabase + webserver + scheduler) ne se lancent pas ensemble. Même sur l'hôte dédié : les deux usages (servir et orchestrer) sont prévus, pas les deux profils dans le même `up`.
+
+| | Démo (livrée) | Cible (machine dédiée, ≥ 16 Go) |
+| --- | --- | --- |
+| Image Airflow | `apache/airflow:2.10.4-python3.11`, volume `dags/` seul | `Dockerfile.airflow` + volumes `src/`, `config/`, `data/raw/`, `models/` |
+| Entrepôt | `DATABASE_URL` = Postgres Windows (`localhost`) | `DATABASE_URL_CONTENEUR` via `host.docker.internal` (pas `airflow-db`) |
+| Collecte | scripts venv (hors Airflow) | **un** Trigger Airflow par jour (quota OpenSky) |
+| API / Grafana | profil `monitoring`, sans le profil `airflow` | mêmes services, **autre** `up` que celui d'Airflow |
+
+| Hôte | RAM | Rôle |
+| --- | --- | --- |
+| PC perso | 8 Go | UI Airflow, DAG en pause ; collecte = venv |
+| VM test | ~3,7 Go, sans swap | Preuve CLI du graphe ; pas d'UI Gunicorn fiable |
+| Machine dédiée | ≥ 16 Go | Cible : API (et Grafana) **et** un Trigger Airflow, profils Compose séparés |
+
+Sur la machine cible : construire `Dockerfile.airflow` (tag 2.10.4, `libgomp1`, `requirements-airflow.txt`) ; monter `src/` (et `config/`, `data/raw/`, `models/`) ; pointer le scheduler vers l'étoile métier ; **un** Trigger ; contrôler `fact_flights` puis `/predict` (recharger le `joblib`). Retour arrière : image officielle + `dags/` seul. Kubernetes n'est pas requis.
 
 ---
 
-## 4. Automatisation & Monitoring
+## 4. Automatisation et monitoring
 
-- **Automatisation des traitements** : Apache Airflow **SequentialExecutor** (`docker compose --profile airflow`). DAG `pipeline_quotidien` (`@daily`, `catchup=False`, créé en pause) : `collecter_hubs` → `etl` → `entrainer`. NewsAPI n'est pas dans le DAG (quota et grain journalier, pas une salve horaire). Les clés restent le `.env` du projet (pas des Variables Airflow). Un Postgres interne (`airflow-db`) stocke uniquement les métadonnées Airflow ; l'entrepôt étoile est `DATABASE_URL` / `DATABASE_URL_CONTENEUR` (`host.docker.internal` depuis un conteneur). SequentialExecutor plutôt que LocalExecutor : une seule chaîne de tâches, pas de branches parallèles à accélérer. Un exécuteur Celery (file Redis, workers) viserait un parallélisme distribué dont ce DAG n'a pas besoin, au prix d'une empreinte mémoire trop élevée. La commande `airflow standalone` n'est pas retenue : elle s'appuie sur SQLite, source de verrouillage fichier sous Windows ; le Compose officiel sépare webserver, scheduler et métabase Postgres.
-- **CI/CD** : un contrôle automatique à chaque push (et pull request) vers `main`, sur un runner GitHub, sans dépendre d'un `pytest` lancé à la main sur le poste de développement. C'est la preuve de non-régression de la Phase 4 : le dépôt reste testable par un tiers (jury, clone GitHub) sans clés API et sans entrepôt local.
-  - **Périmètre livré** : GitHub Actions (`.github/workflows/tests.yml`) installe `requirements-ci.txt` et exécute `pytest`. Un fichier `.env` est copié depuis `.env.example` (placeholders) pour que Pydantic `Settings` démarre ; **aucun secret** n'est stocké dans le workflow ni dans les secrets GitHub à ce stade.
-  - **pytest seulement** : la suite `tests/` couvre déjà l'ingestion (réseau mocké), le schéma, l'ETL, le modèle (DataFrames mockés), l'API FastAPI (`TestClient`), et la relecture des fichiers Dockerfile / Compose / DAG. C'est le filet qui protège les choix métier. Un lint (Ruff, Flake8, Black) n'est pas configuré dans le dépôt : l'annoncer dans ce rapport serait inexact. Un `docker build` dans Actions n'est pas non plus branché : les tests lisent déjà le Dockerfile (tag Python figé, pas `latest`) et le Compose (`env_file`, volume `models/`, pas de publication `5432`) ; un build d'image ne prouverait pas `POST /predict` (le `joblib` est gitignoré) et alourdirait le runner sans gain de preuve.
-  - **Dépendances CI** : `requirements-ci.txt` reprend les bibliothèques nécessaires aux tests (FastAPI, LightGBM, scikit-learn, httpx, pytest) **sans** torch / Jupyter / ydata-profiling. DistilBERT n'est pas chargé à la collecte des tests ; HuggingFace est mocké. Les tests marqués `@pytest.mark.postgres` sont ignorés si PostgreSQL n'est pas joignable — le runner Ubuntu n'héberge pas l'entrepôt Phase 2, c'est volontaire.
-- **Monitoring** : deux niveaux. Les **logs** applicatifs (`src/utils/logger.py`) tracent ingestion, durées d'exécution et erreurs d'API (dont le rate-limiting). Le **monitoring de l'API** est un profil Compose `monitoring` : Prometheus (`prom/prometheus:v2.54.1`) scrape `GET /metrics` toutes les 15 s sur le hostname Compose `api:8000` ; Grafana (`grafana/grafana:11.3.1`) affiche un tableau provisionné (joblib chargé, débit HTTP, latence p95, cumul `POST /predict`). Ce profil n'est pas combiné avec `airflow` sur le poste de développement (contrainte mémoire). La rétention Prometheus est limitée à 24 h. Ce n'est pas un monitoring d'Airflow ni de PostgreSQL métier.
-- **Gestion des erreurs et alertes** : Chaque module d'ingestion utilise un bloc `try/except` ciblé (pas de `except` générique silencieux) qui journalise l'erreur avec son contexte (source, timestamp, message) sans interrompre les autres sources en cas d'échec partiel (résilience du pipeline).
+L'orchestration (horloge, graphe, pourquoi un Trigger échoue aujourd'hui, comment le débloquer) est en parties 3.3 et 3.4. Dans cette partie : la CI et le monitoring du **service**.
 
----
+**CI** : GitHub Actions (`tests.yml`) lance `pytest` avec `requirements-ci.txt` (sans torch). `.env` recopié depuis `.env.example` : **aucun secret**. Tests Postgres ignorés si la base n'est pas là. Pas de lint ni de `docker build` dans Actions.
 
-## 5. Bilan
+**Monitoring** : logs (`logger.py` + `ingestion_log`) ; Prometheus scrape `api:8000` ; Grafana provisionné (joblib, débit, p95, cumul `/predict`). Rétention 24 h.
 
-- **Principales difficultés rencontrées** (techniques, temporelles, organisationnelles) : [À COMPLÉTER]
-- **Verrous techniques majeurs** : [À COMPLÉTER]
-- **Contribution principale au projet** : [À COMPLÉTER]
-- **Pistes d'amélioration** (fiabilité, performance, maintenabilité) : [À COMPLÉTER]
+![Cible Prometheus airlines-api UP](captures/annexe_prometheus_targets_up.png)
 
----
+*Figure 4 — Prometheus : job `airlines-api` UP.*
 
-## 6. Suite du projet
+![Tableau Grafana API durée observée](captures/annexe_grafana_dashboard_api.png)
 
-- **Scalabilité / intégration en production** : [À COMPLÉTER — ex : migration vers un entrepôt de données cloud managé (BigQuery, Snowflake) ou une instance PostgreSQL partitionnée, orchestration via Airflow plutôt que cron]
-- **Axes d'amélioration envisagés** : [À COMPLÉTER — nouvelles sources de données, automatisation complète, visualisation temps réel]
-- **Contribution du projet à une meilleure exploitation de la donnée** : [À COMPLÉTER]
+*Figure 5 — Grafana : santé de l'API, pas une carte d'avions.*
+
+**KPI suivis** : `pytest` vert sur `main` ; jauge joblib / p95 ; crédits OpenSky dans les logs ; DAG en pause.
 
 ---
 
-## 7. Bibliographie
+## 5. Bilan et suite
 
-[À COMPLÉTER — articles, documentation officielle des APIs, ressources HuggingFace/LightGBM consultées]
+**Difficultés.** Titre « retard » vs contrat des APIs ; quota OpenSky ; météo *current* ± 3 h ; RAM (8 Go / 3,7 Go) ; LightGBM sous la médiane.
+
+**Verrous.** Pas d'heure prévue sans 4e source ; image officielle Airflow sans `src/` ; OOM Gunicorn sur la VM.
+
+**Livré.** Pipeline Europe reproductible, API de durée observée, CI, monitoring du service, DAG quotidien en pause.
+
+**Ensuite.** Appliquer la partie 3.4 sur un hôte dédié. 4e source d'horaires = **projet distinct** (en plus d'OpenSky).
 
 ---
 
-## 8. Annexes
+## 6. Bibliographie
 
-- **Schéma d'architecture technique global** : [À COMPLÉTER — diagramme incluant : sources API → ingestion → PostgreSQL (schéma en étoile) → feature engineering → modèle LightGBM → API FastAPI → conteneurs Docker]
-- **Endpoints des API développées ou consommées** :
-  - *Développées* : voir §3.1 ci-dessus.
-  - *Consommées* : OpenSky Network (`/flights/departure`, `/flights/arrival`), OpenWeather (`/data/2.5/weather`), NewsAPI (`/v2/everything`).
-- **Structure des fichiers de configuration** : `.env.example` (racine) documente toutes les variables attendues ; `config/settings.py` centralise leur chargement et validation typée.
+- OpenSky Network, *REST API* (`/flights/departure`, `/flights/arrival`, OAuth2) : https://openskynetwork.github.io/opensky-api/rest.html
+- OpenWeather, *Current Weather Data* : https://openweathermap.org/current
+- Open-Meteo, *Historical Weather API* : https://open-meteo.com/en/docs/historical-weather-api
+- NewsAPI, *Everything* : https://newsapi.org/docs/endpoints/everything
+- Microsoft, LightGBM : https://lightgbm.readthedocs.io/
+- Hugging Face, DistilBERT sentiments : https://huggingface.co/lxyuan/distilbert-base-multilingual-cased-sentiments-student
+- FastAPI : https://fastapi.tiangolo.com/
+- Apache Airflow 2.10 : https://airflow.apache.org/docs/apache-airflow/2.10.4/index.html
+- Prometheus / Grafana : https://prometheus.io/docs/introduction/overview/ ; https://grafana.com/docs/grafana/latest/
+- US DOT / BTS (Kaggle — **non utilisé** dans `fact_flights`) : https://www.kaggle.com/datasets/usdot/flight-delays
+- Règlement (CE) n° 261/2004 du Parlement européen et du Conseil du 11 février 2004 (indemnisation et assistance en cas de retard important) : https://eur-lex.europa.eu/legal-content/FR/TXT/?uri=CELEX:32004R0261 — le retard y est un écart à l'heure **prévue** ; hors contrat des trois APIs du projet.
 
+---
+
+## 7. Annexes
+
+```mermaid
+flowchart LR
+  OS[OpenSky /flights] --> ING[src/ingestion]
+  OW[OpenWeather current] --> ING
+  NA[NewsAPI] --> ING
+  ING --> RAW[data/raw JSON]
+  RAW --> ETL[src/processing/etl]
+  ETL --> PG[(PostgreSQL étoile)]
+  PG --> FE[src/models/jeu]
+  FE --> LGBM[LightGBM joblib]
+  LGBM --> API[FastAPI /predict]
+  API --> PROM[Prometheus /metrics]
+  PROM --> GRAF[Grafana]
+  DAG[Airflow DAG pause] -.->|mêmes CLI, hors image officielle| ING
+```
+
+Sources → JSON → étoile → joblib → API. Airflow orchestre les CLI ; l'image officielle ne contient pas `src/`.
+
+- **API consommées** : OpenSky `/flights/*`, OpenWeather `/data/2.5/weather`, NewsAPI `/v2/everything`.
+- **Config** : `.env.example` + `config/settings.py`.
+- **Figures** : 1–2 (partie 3.1), 3 (partie 3.3), 4–5 (partie 4) dans `docs/captures/`.
