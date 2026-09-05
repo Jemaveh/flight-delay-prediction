@@ -11,7 +11,10 @@
 ### 1.1 Contexte
 
 - **Contexte métier / d'insertion du projet** : Après un Master en Biologie obtenu en 2019, j'ai travaillé plusieurs années dans la recherche scientifique en biologie végétale, où je concevais des protocoles expérimentaux et recueillais des données de terrain et de laboratoire. C'est au fil de ces expériences que j'ai identifié la phase du travail que je préférais réellement : le traitement et l'analyse de la donnée, plus que sa seule production. En 2022, en autodidacte, j'ai découvert Python en développant un script capable de reconnaître automatiquement sur des photographies la présence de maladies sur des feuilles de plantes et d'en calculer la surface, dans le cadre de mes expérimentations. Cette expérience a agi comme un déclencheur et m'a convaincue de me reconvertir dans la DATA.
-  Je me suis d'abord formée et certifiée comme Data Analyst, un choix cohérent avec mon parcours scientifique initial. J'ai ensuite poursuivi jusqu'au niveau Master avec un parcours Data Engineer, une orientation qui correspondait davantage à mes affinités techniques et pour laquelle je constatais un besoin croissant dans la majorité des entreprises. Ce projet s'inscrit directement dans cette trajectoire : il est conçu comme une pièce de portfolio technique, en complément des missions réalisées durant mon alternance en entreprise, pour démontrer ma capacité à intervenir sur toute la chaîne de valeur — de l’ingestion des données complexes à la mise en production dans un contexte professionnel reconstitué.
+  Je me suis d'abord formée et certifiée comme Data Analyst, un choix cohérent avec mon parcours scientifique initial. J'ai ensuite poursuivi jusqu'au niveau Master avec un parcours Data Engineer, une orientation qui correspondait davantage à mes affinités techniques et pour laquelle je constatais un besoin croissant dans la majorité des entreprises.
+  
+  
+  Ce projet s'inscrit directement dans cette trajectoire : il est conçu comme une pièce de portfolio technique, en complément des missions réalisées durant mon alternance en entreprise, pour démontrer ma capacité à intervenir sur toute la chaîne de valeur — de l’ingestion des données à la mise en production dans un contexte professionnel reconstitué.
   Le choix du secteur aérien pour ce projet n'est pas anodin : je vis et travaille à Toulouse, un bassin d'emploi dont l'économie est très largement structurée autour d'Airbus et de la filière aéronautique. Travailler sur une problématique data ancrée dans ce secteur me permet de rapprocher ce projet de portfolio de mon environnement professionnel local, et potentiellement des opportunités d'emploi que je vise.
 - **Contexte technique** : Le secteur aérien génère un volume massif de données hétérogènes (position des vols en temps réel, conditions météorologiques, actualités impactant le trafic). Ces données sont dispersées dans des silos (APIs distinctes, formats différents) et ne sont, par défaut, reliées par aucun système commun. Le projet répond à un besoin technique classique de **Data Engineering : ingérer, fusionner et structurer des sources multi-format** pour les rendre exploitables par un pipeline de données (analytique et/ou Machine Learning).
 - **Contexte économique** : Les retards de vols représentent un coût direct pour les compagnies aériennes (pénalités, correspondances manquées, hébergement) et un coût indirect pour les aéroports et les passagers. Par exemple, en Europe, le **Règlement (CE) n° 261/2004** impose aux compagnies des obligations financières strictes :
@@ -30,17 +33,81 @@
   2. **Structuration** : Nettoyer, normaliser et fusionner ces sources dans un schéma de données cohérent (voir Rendu 2).
   3. **Automatisation** : Construire des scripts d'ingestion réutilisables et paramétrables (pas de collecte manuelle).
   4. **Mise à disposition** : Rendre les données exploitables pour un cas d'usage (durée de vol observée / tentative de retard — le Rendu 3 précise ce que les sources permettent réellement de prédire).
-- **Niveau d'expertise de l'équipe vis-à-vis de l'ingestion/transformation/stockage** : Une expérience déjà significative en data/analytics précédait ce projet, ce qui a permis de concentrer l'effort d'apprentissage sur les compétences plus spécifiquement liées à l'ingénierie de données : conception de pipelines d'ingestion automatisés, architecture de stockage relationnelle et conteneurisation, moins pratiquées jusqu'ici.
+- **Niveau d'expertise vis-à-vis de l'ingestion/transformation/stockage** : Une expérience déjà significative en data/analytics précédait ce projet, ce qui a permis de concentrer l'effort d'apprentissage sur les compétences plus spécifiquement liées à l'ingénierie de données : conception de pipelines d'ingestion automatisés, architecture de stockage relationnelle et conteneurisation, moins pratiquées jusqu'ici.
 - **Échanges avec des experts techniques ou métiers** : Ce projet a été mené en autonomie complète, sans échange complémentaire avec des experts du secteur aérien ou de la donnée en dehors du cadre d'encadrement standard de la formation.
-- **Projet similaire connu** : De nombreux projets de prédiction de retards existent sur Kaggle, à partir des données du Bureau of Transportation Statistics américain. Ces fichiers contiennent déjà l'horaire programmé et le retard. Ils ont inspiré le *thème* du projet ; ils ne décrivent pas le contrat de nos trois APIs (détail : Rendu 3 § 8).
+- **Projet similaire connu** : De nombreux projets de prédiction de retards existent sur Kaggle, à partir des données du Bureau of Transportation Statistics américain. Ces fichiers contiennent déjà l'horaire programmé et le retard. Ils ont inspiré le *thème* du projet ; ils ne décrivent pas le contrat des trois APIs choisit (voir Rendu 3).
+
+### 1.3 Cahier des charges (cadrage)
+
+Ce sous-ensemble tient lieu de cahier des charges **non exhaustif** : périmètre, interlocuteurs fictifs du produit, indicateurs. Il n'y a pas eu d'entretiens métier ni de questionnaires : le projet est mené en autonomie dans le cadre de la formation. Les « personas » ci-dessous sont donc un cadrage de **contrat de données**,pas le résultat d'une enquête terrain.
+
+**Why** : les retards ont un coût (CE n°261/2004, correspondances, ressources au sol). Les données opérationnelles, météo et actualités existent, mais dans des silos.
+
+**What** : un pipeline Data Engineer Europe : trois APIs publiques → JSON horodatés → entrepôt en étoile → modèle de **durée observée** ADS-B → API de consommation. Ce n'est **pas** un clone de Flightradar24, ni un moteur d'indemnisation passager.
+
+**Value** : rendre interrogeable un entrepôt reproductible et un service `/predict` honnête sur ce que les sources mesurent. Le règlement 261/2004 motive le sujet du projet mais il ne définit pas ce que l’API renvoie.
+
+**Dans le périmètre (IN)** :
+
+- Ingestion automatisée OpenSky (`/flights/departure` et `/flights/arrival`, dix hubs européens), OpenWeather *Current*, NewsAPI.
+- Nettoyage, étoile PostgreSQL, ETL incrémental.
+- Régression de la durée observée (`last_seen − first_seen`), modèle enregistré (`joblib`), API FastAPI, conteneurisation, orchestration quotidienne décrite (DAG en pause ; exécution réelle = scripts locaux), CI, monitoring du **service** (Prometheus / Grafana).
+
+**Hors périmètre (OUT)** :
+
+- Retard « réel − prévu » : aucune des trois APIs n'expose l'horaire programmé. Donc impossible de calculer le retard passager (heure d’arrivée réelle - heure annoncée sur le billet).
+- Tableau de bord cartographique des avions en direct.
+- Quatrième source d'horaires payante.
+- Entretiens utilisateurs, Experience Map terrain, MLflow, mesure de *data drift*, Kubernetes.
+
+**Personas** :
+
+| Persona | Besoin | Servi par ce projet ? |
+|---|---|---|
+| Exploitant / OCC (Operations Control Center) / passager 261/2004 | Retard vs horaire publié | **Non** — pas d'heure prévue dans les sources |
+| Analyste interne | Durée plausible, service appelable | **Oui** — `POST /predict`, `/docs` (Phase 4) |
+| Data engineer | Pipeline relançable, quota, qualité | **Oui** — JSON, étoile, logs, DAG en pause, CI |
+
+**Indicateurs de cadrage (quatre KPI)** — à suivre pour prioriser :
+
+| KPI | Nature | État actuel des choses |
+|---|---|---|
+| Crédits OpenSky restants (`X-Rate-Limit-Remaining`) | Technique / quota | Seau `/flights` 4000 / jour ; une salve 10 hubs ≈ 20 appels, ~30 crédits chacun |
+| Part des vols avec météo origine (± 3 h, *current*) | Qualité de jointure | ~17–22 % selon la salve (3 664 / 21 054 au 04/09) |
+| RMSE LightGBM vs médiane globale (durée, min) | Performance modèle | Le modèle **ne bat pas** la médiane pour le moment (54,02 vs 44,07 au 04/09) |
+| Disponibilité du service (`GET /health`, jauge joblib) | Exploitation | Processus UP + fichier `modele_vol_meteo.joblib` chargé |
+
+
+Ce qui limite ce projet, ce n'est pas le nombre de vols en base : c'est l'absence d'horaire programmé (donc pas de retard calculable) et le fait qu'une capture météo *current* ne recouvre qu'une fenêtre de quelques heures, alors que chaque salve OpenSky porte sur 24h.
+
+### 1.4 Veille technologique et réglementaire
+Avant de figer les trois APIs, trois pistes existaient déjà. Aucune n'a été retenue comme source principale.
+
+**Flightradar24** :
+Type de données : carte, flotte mondiale, souvent des horaires commerciaux. Il n'existe **pas** d'API Flightradar24 gratuite en donnée réelle : l'API officielle est un abonnement payant.  Le *sandbox* est gratuit mais renvoie des réponses figées.
+Pour contourner cela il faudrait faire du **scraping**.
+OpenSky est un choix rapide et fiable : ADS-B public, documenté, scriptable — mais au prix de l'horaire manquant (la documentation OpenSky l'indique : pas d'horaires ni de retards commerciaux).
+
+**FlightAware (AeroAPI)** : Un palier *Personal* existe (crédit mensuel limité, carte bancaire, facturation à la requête) et peut exposer des horaires (`scheduled_*`). Ce serait une **quatrième source**, pas un substitut à OpenSky : jointure indicatif ADS-B ↔ numéro commercial, mais hors du budget retenu pour ce projet.
+
+**CSV Kaggle / BTS (US DOT)** :
+Il a déjà l'horaire et le retard (`DEP_DELAY`). L'utiliser *à la place* d'OpenSky fait un bon exercice ML (souvent une classe ≥ 15 min) et mais rien d'interressant d'un point de vue Data Engineer : plus d'API live, plus d'Europe, plus de quotas à gérer. Le **mélanger** dans `fact_flights` n'ajoute aucune heure prévue aux vols européens et casse l'étoile (voir Rendu 3).
+
+**Réglementation.** Le règlement (CE) n° 261/2004 définit le retard indemnizable comme un écart à l'heure d'arrivée *prévue* : sans quatrième source, cette promesse n'est pas tenable. Le RGPD ne bloque pas le projet (pas de PII passager) mais interdit d'inventer un couplage passager–vol. Les quotas (OpenSky 4000 crédits / jour, NewsAPI 100 requêtes / jour) calent le rythme de collecte autant qu'un texte de loi.
+En résumé : Flightradar et Kaggle ont été écartés pour garder un pipeline Europe, public, reproductible. Le pivot (durée observée plutôt qu'un retard affiché) est la conséquence de ce choix.
+
+### 1.5 Analyse SWOT
+
+| | |
+|---|---|
+| **Forces** | Trois APIs publiques documentées ; pipeline reproductible (ingestion, JSON, plus tard étoile) ; RGPD simple (pas de PII). |
+| **Faiblesses** | Pas d'heure prévue ; grains incompatibles (vol / point météo / jour d'actu) ; quotas ; PC personnel limité à 8 Go. |
+| **Opportunités** | Sur ce pipeline : météo d’archive (Open-Meteo, déjà testée en Phase 3) pour mieux recouvrir les 24 h de vols ; machine plus dimensionnée pour qu’Airflow exécute vraiment la collecte. Un vrai retard exigerait une API d’horaires en plus des trois sources actuelles : ce serait un nouveau projet.
+| **Menaces** | HTTP 429 / épuisement du seau OpenSky|
 
 ---
 
-
-
 ## 2. Exploration des données
-
-
 
 ### 2.1 Cadre
 
@@ -81,7 +148,7 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
   - **Rate limiting** : OpenWeather et NewsAPI limitent le nombre d'appels en offre gratuite (nécessite une stratégie de cache/pagination et un espacement des appels).
   - **Authentification** : OpenSky nécessite un compte (Basic Auth / OAuth2 selon version d'API).
   - **Qualité d'origine** : Les données OpenSky peuvent contenir des valeurs manquantes (aéronefs hors couverture des récepteurs ADS-B) ; les articles NewsAPI ne sont pas garantis pertinents à 100 % (nécessité de filtrage par mots-clés).
-  - **Pas d'horaire programmé** : OpenSky, OpenWeather et NewsAPI ne donnent pas l'heure de départ ou d'arrivée **annoncée**. Un retard au sens du règlement 261/2004 (ou des jeux Kaggle BTS) est *heure réelle − heure prévue*. Sans l'heure prévue, cette cible n'est pas mesurable. Les projets Kaggle cités en § 1.2 partent de CSV américains qui ont déjà cette colonne ; ce n'est pas le contrat de nos trois APIs. Conséquence pour le modèle : Rendu 3.
+  - **Pas d'horaire programmé** : OpenSky, OpenWeather et NewsAPI ne donnent pas l'heure de départ ou d'arrivée **annoncée**. Un retard au sens du règlement 261/2004 (ou des jeux Kaggle BTS) est *heure réelle − heure prévue*. Sans l'heure prévue, cette cible n'est pas mesurable. Les projets Kaggle cités en en veille techno partent de CSV américains qui ont déjà cette colonne ; ce n'est pas le contrat de nos trois APIs. Conséquence pour le modèle : Rendu 3.
 
 ---
 
@@ -89,25 +156,29 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
 
 ## 3. Préparation et nettoyage
 
-- **Démarche retenue** : les règles de nettoyage sont identifiées au fil de l'exploration de chaque source, puis appliquées concrètement, à titre de démonstration, directement dans chaque notebook sur les données déjà chargées pour cette exploration (voir le détail avant/après par source ci-dessous). Cette démonstration reste volontairement locale à chaque notebook : un script de nettoyage réutilisable et généralisé (`src/processing/data_cleaning.py`), qui appliquera ces mêmes règles de façon automatisée aux 3 sources ensemble avant leur fusion dans le schéma en étoile, reste prévu pour la Phase 2 (Rendu 2), une fois ce schéma de fusion arrêté. L'écrire dès maintenant, avant de connaître précisément la structure de sortie attendue, obligerait probablement à le retravailler une fois ce schéma défini.
-- **Mise à plat déjà appliquée sur les 3 sources** : au-delà du nettoyage à proprement parler, les 3 notebooks appliquent déjà une première transformation sur chaque source — la mise à plat du JSON imbriqué renvoyé par chaque API en DataFrame tabulaire (`pd.json_normalize` pour les champs `main.`*/`wind.*`/`sys.*` d'OpenWeather, reconstruction ligne par ligne pour les états OpenSky et les articles NewsAPI). Ce n'est pas seulement une étape prévue : c'est une transformation déjà réalisée dans les 3 notebooks, préalable au nettoyage lui-même.
-- **Contrôles préalables d'intégrité du texte et des unités** : avant de définir la moindre règle de nettoyage, chaque notebook vérifie l'intégrité de ce qui arrive de l'API. Sur les colonnes textuelles des 3 sources, un contrôle d'encodage cherche les séquences de mojibake caractéristiques d'un texte UTF-8 relu en Latin-1 (`Ã©`, `Ã¨`, `Ã` , `Ãª`, `Ã¼`, `Ã§`, `â€`) ainsi que le caractère de remplacement U+FFFD, et affiche des libellés accentués comme preuve visuelle. S'y ajoutent, sur les textes d'articles, la recherche de balises et d'entités HTML résiduelles et la validation de la forme des URL ; et, sur les colonnes numériques, la confrontation des unités documentées aux ordres de grandeur réellement observés (vitesses et altitudes OpenSky, échelle de température et vitesse de vent OpenWeather). Aucun de ces contrôles n'a conduit à une correction : les 3 sources arrivent en UTF-8 correctement décodé et dans les unités annoncées, ce qui évite d'avoir à prévoir une étape de réparation d'encodage ou de conversion d'unités dans le pipeline. Le contrôle reste en place dans les notebooks pour être rejoué sur les captures suivantes.
+- **Démarche retenue** : les règles de nettoyage sont identifiées au fil de l'exploration de chaque source, puis appliquées concrètement, à titre de démonstration, directement dans chaque notebook sur les données déjà chargées pour cette exploration. Cette démonstration reste volontairement locale à chaque notebook. Le script de nettoyage réutilisable (`src/processing/data_cleaning.py`) a été écrit **en Phase 2**, une fois le schéma en étoile arrêté (Rendu 2).
+
+- **Mise à plat déjà appliquée sur les 3 sources** : au-delà du nettoyage à proprement parler, les 3 notebooks appliquent déjà une première transformation sur chaque source — la mise à plat du JSON imbriqué renvoyé par chaque API en DataFrame tabulaire (`pd.json_normalize` pour les champs `main.`*/`wind.*`/`sys.*` d'OpenWeather, reconstruction ligne par ligne pour les états OpenSky et les articles NewsAPI).
+
+- **Contrôles préalables d'intégrité du texte et des unités** : avant de définir la moindre règle de nettoyage, chaque notebook vérifie l'intégrité de ce qui arrive de l'API. Sur les colonnes textuelles des 3 sources, un contrôle d'encodage cherche les séquences de mojibake caractéristiques d'un texte UTF-8 relu en Latin-1 (`Ã©`, `Ã¨`, `Ã` , `Ãª`, `Ã¼`, `Ã§`, `â€`) ainsi que le caractère de remplacement U+FFFD, et affiche des libellés accentués comme preuve visuelle.
+S'y ajoutent, sur les textes d'articles, la recherche de balises et d'entités HTML résiduelles et la validation de la forme des URL ; et, sur les colonnes numériques, la confrontation des unités documentées aux ordres de grandeur réellement observés (vitesses et altitudes OpenSky, échelle de température et vitesse de vent OpenWeather). Aucun de ces contrôles n'a conduit à une correction : les 3 sources arrivent en UTF-8 correctement décodé et dans les unités annoncées, ce qui évite d'avoir à prévoir une étape de réparation d'encodage ou de conversion d'unités dans le pipeline. 
+
 - **Nettoyage identifié puis appliqué sur OpenSky** (voir `notebooks/01_exploration_opensky.ipynb` pour le détail statistique complet) :
   - Le champ `sensors` est vide dans 100 % des cas observés. **Appliqué** : colonne supprimée.
   - Des vitesses au sol physiquement impossibles ont été observées, toujours associées à des positions très anciennes (donnée périmée, pas une vraie vitesse de croisière). **Appliqué** : filtre combinant l'âge de la position (seuil de 300 secondes) et un seuil de vitesse plausible (400 m/s), qui retire quelques lignes par capture.
-  - L'altitude barométrique (`baro_altitude`) est manquante pour la quasi-totalité des avions au sol, contre une infime minorité en vol : traitement différencié requis selon le statut `on_ground`. **Reste prévu en Phase 2** dans le script générique, cette logique conditionnelle étant plus structurante à traiter une fois les 3 sources fusionnées.
+  - L'altitude barométrique (`baro_altitude`) est manquante pour la quasi-totalité des avions au sol, contre une infime minorité en vol : traitement différencié selon `on_ground`, repris dans `data_cleaning.py` (Phase 2) une fois le grain `/flights/*` arrêté. Les notebooks d'exploration portent encore sur `/states/all`.
   - La colonne `callsign` affiche une complétude de 100 % au sens de pandas alors qu'une petite partie de ses valeurs sont des chaînes réduites à des espaces : le taux brut surestime la disponibilité de l'indicatif de vol. **Reste à généraliser** dans le script de nettoyage : conversion de ces chaînes vides en valeurs manquantes dès le chargement, avant tout calcul de complétude.
-  - Certains zéros masquent une non-mesure plutôt qu'une valeur réelle (`velocity == 0` ou `baro_altitude == 0` sur un avion déclaré en vol), et l'écart entre `baro_altitude` et `geo_altitude` dépasse ponctuellement le kilomètre sur un même avion au même instant. **Reste à généraliser** : traiter ces zéros comme non renseignés et ajouter un contrôle de cohérence entre les deux altitudes, le filtre sur l'âge de la position n'écartant qu'une partie de ces cas.
+  - Certains zéros masquent une "non-mesure" plutôt qu'une valeur réelle (`velocity == 0` ou `baro_altitude == 0` sur un avion déclaré en vol), et l'écart entre `baro_altitude` et `geo_altitude` dépasse ponctuellement le kilomètre sur un même avion au même instant. **Reste à généraliser** : traiter ces zéros comme non renseignés et ajouter un contrôle de cohérence entre les deux altitudes, le filtre sur l'âge de la position n'écartant qu'une partie de ces cas.
 - **Nettoyage identifié puis appliqué sur OpenWeather** (voir `notebooks/02_exploration_openweather.ipynb`) :
   - Les champs `rain.1h` et `wind.gust` sont absents de la réponse pour la majorité des aéroports : absence structurelle (le phénomène n'est renvoyé que lorsqu'il est mesuré). **Appliqué** : remplacement par zéro, les deux colonnes passant de 1/10 à 10/10 valeurs non nulles sur la capture explorée.
-  - La visibilité est plafonnée à 10 000 mètres par l'API. **Appliqué à titre défensif** : plafonnement explicite de la colonne à 10 000 m dans le code (aucune valeur de la capture explorée ne dépassait déjà ce seuil).
+  - La visibilité est plafonnée à 10 000 mètres par l'API (aucune valeur de la capture explorée ne dépassait déjà ce seuil).
 - **Nettoyage identifié puis appliqué sur NewsAPI** (voir `notebooks/03_exploration_newsapi.ipynb`) :
   - Le champ `content` est systématiquement tronqué à environ 200 caractères sur le plan gratuit (confirmé à 213,9 caractères en moyenne sur 120 articles). **Appliqué** : colonne exclue, la capture explorée passant de 11 à 10 colonnes ; l'analyse de sentiment s'appuiera sur `title` et `description`, fournis en entier.
-  - La recherche par mots-clés génériques peut remonter des articles hors sujet (tensions géopolitiques, actualité sans lien avec le trafic aérien commercial) : aucun critère simple et objectif de filtrage n'a été dégagé à ce stade, donc aucun filtre supplémentaire n'a été appliqué. Un raffinement des mots-clés ou un filtrage de pertinence **reste à prévoir en Phase 2**.
+  - La recherche par mots-clés génériques peut remonter des articles hors sujet (tensions géopolitiques, actualité sans lien avec le trafic aérien commercial) : aucun critère simple et objectif de filtrage n'a été dégagé à ce stade, donc aucun filtre supplémentaire n'a été appliqué. Un raffinement n'a pas été poussé ensuite : le signal jour reste un agrégat (Phases 2–3).
   - Le même article peut apparaître sous plusieurs URL distinctes (reprise par un agrégateur, ou même média servi sous deux domaines) : le contrôle de doublons par URL ne détecte pas ces cas, alors qu'une comparaison sur le titre normalisé (minuscules, sans ponctuation) les fait ressortir. **Reste à généraliser** : dédupliquer sur le titre normalisé en plus de l'URL, sans quoi un même événement serait compté plusieurs fois dans le signal d'actualité d'une journée.
   - La répartition par langue des articles est très déséquilibrée (une capture dominée à 80 % par l'anglais) : point à intégrer dans la conception du futur modèle d'analyse de sentiment, sans action de nettoyage associée.
 - **Scripts d'ingestion / automatisation** : Voir le module `src/ingestion/` (`opensky_client.py`, `openweather_client.py`, `newsapi_client.py`) — chaque module encapsule les appels API, la gestion des erreurs et la sauvegarde brute horodatée dans `data/raw/`.
-- **Transformations et enrichissements restant prévus en Phase 2** : le script de nettoyage réutilisable et généralisé (`src/processing/data_cleaning.py`), qui généralisera aux 3 sources combinées les règles démontrées ci-dessus (et ajoutera le traitement conditionnel de l'altitude selon `on_ground`), ainsi que l'analyse de sentiment (`src/processing/sentiment_analysis.py`), restent prévus pour la Phase 2, une fois le schéma de fusion arrêté.
+- **Suite réalisée après ce rendu** : le script `src/processing/data_cleaning.py` et l'étoile (Rendu 2) ; le score BERT journalier (`src/processing/scorer_sentiment.py`, Phase 3). Le filtrage de pertinence NewsAPI n'a pas été poussé au-delà de la déduplication titre / URL (Rendu 2–3).
 
 ---
 
@@ -115,26 +186,24 @@ Côté stockage, chaque appel de collecte produit un fichier JSON horodaté, un 
 
 ## 4. Visualisations et analyses descriptives (Data Profiling)
 
-> **Note méthodologique** : ce Data Profiling porte sur la **qualité de l'ingestion** (distributions, complétude, corrélations).
+Cette section documente le **dispositif de profiling** et les constats qui n'ont pas donné lieu à un filtre à ce stade.
 
-- **Visualisations techniques produites** : un rapport `ydata-profiling` par source, généré directement depuis chaque notebook d'exploration et sauvegardé dans `data/profiling_reports/` (`opensky_profiling_report.html`, `openweather_profiling_report.html`, `newsapi_profiling_report.html`), couvrant systématiquement pour chaque colonne les distributions, le taux de complétude, les valeurs distinctes et les corrélations. En complément, chaque notebook contient des visualisations ciblées répondant à des questions précises : taux de complétude par colonne, nuage de points géographique et répartition par pays d'origine pour OpenSky ; comparaison de la température et du vent par aéroport pour OpenWeather ; répartition des articles par langue de requête pour NewsAPI.
-- **Familles de contrôles couvertes par notebook** : complétude et valeurs manquantes, bornes physiques et valeurs aberrantes, doublons (sur identifiant, sur URL, sur titre normalisé), symboles et encodage des caractères, cohérence des unités, fraîcheur et horodatages, cohérence entre colonnes corrélées. Chaque famille est traitée par une cellule dédiée dans le notebook de la source concernée, suivie de son interprétation.
-- **Symboles et encodage des caractères** : contrôlé explicitement sur les colonnes textuelles des 3 sources, par recherche des séquences de mojibake typiques d'un texte UTF-8 relu en Latin-1 et du caractère de remplacement U+FFFD. Le contrôle est complété par l'affichage d'échantillons accentués servant de preuve visuelle : titres dans les différentes langues de requête pour NewsAPI, libellés météo francophones pour OpenWeather, jeu de caractères effectivement rencontré pour les indicatifs OpenSky. Aucun défaut de décodage relevé sur les captures explorées ; OpenSky se limite à l'ASCII (indicatifs en majuscules et chiffres, noms de pays en anglais), tandis qu'OpenWeather et NewsAPI renvoient des accents et une ponctuation typographique correctement formés.
-- **Incohérences ou anomalies détectées** :
-  - OpenSky : le champ `sensors` est vide à 100 %. Quelques altitudes barométriques légèrement négatives reviennent d'une capture à l'autre (sol sous le niveau de la mer, ou artefact ADS-B). Des vitesses au sol extrêmes apparaissent également, toujours associées à une position très ancienne : il s'agit d'une donnée périmée, pas d'une vraie vitesse de croisière. Les volumes et les extrêmes varient d'une capture à l'autre, mais les constats de qualité (unités, encodage, types d'anomalies) restent les mêmes. D'autres incohérences capteur ont été observées : un écart de plusieurs kilomètres peut exister entre `baro_altitude` et `geo_altitude` sur un même avion au même instant — à traiter comme une incohérence capteur, pas comme une vérité terrain ; des cas de `velocity == 0` alors que `on_ground == False` (vitesse sol nulle en vol) ; des zéros ponctuels sur les altitudes en vol, qui masquent probablement une non-mesure. Aucun doublon sur `icao24` en revanche : chaque capture est bien un instantané, avec une ligne par avion.
-  - OpenWeather : aucune valeur hors bornes physiques détectée sur les cinq variables vérifiées (température, humidité, pression, vent, visibilité) ; deux champs (`rain.1h`, `wind.gust`) partiellement absents mais de façon structurelle, pas aléatoire. L'encodage français est conforme, de même que les unités (°C, m/s) demandées via `units=metric`, vérifiées sur les ordres de grandeur observés et pas seulement sur le paramètre d'appel. La cohérence entre `main.temp`, `main.feels_like` et l'encadrement `main.temp_min`/`main.temp_max` est vérifiée sans anomalie, avec un point de vigilance : l'encadrement peut être dégénéré (les trois valeurs égales) sur certains aéroports, ce qui le rend inexploitable comme feature à lui seul.
-  - NewsAPI : aucun doublon d'URL entre les cinq requêtes mots-clés/langue sur la capture explorée, mais des titres identiques sous des URLs différentes (même article republicé, ou slug variant) — la déduplication future ne pourra pas se limiter à l'URL. Aucune balise ni entité HTML résiduelle dans les titres et descriptions, et aucune URL mal formée : le texte arrive déjà nettoyé côté fournisseur. Le champ `publishedAt` est bien en UTC ; le tampon de collecte était en heure locale naïve (bug corrigé dans le module d'ingestion, biais d'environ 2 h sur le calcul d'âge, impact limité au vu d'un âge moyen d'environ 6,8 jours). Une pollution par mots-clés a également été identifiée (des articles sur des tensions géopolitiques remontés par le mot-clé anglais générique "airspace closure", sans rapport avec des retards de vols commerciaux) et le champ `content` est systématiquement tronqué par l'API.
-- **Conclusions pour la future organisation et modélisation des données** :
-  - La granularité retenue diffère par nature de source : par avion et par instant pour OpenSky, par aéroport et par capture pour OpenWeather, par article pour NewsAPI — la jointure entre les trois sources se fera au niveau du couple (aéroport, date/heure) dans le schéma en étoile (Rendu 2), après agrégation temporelle de NewsAPI (ex : score de sentiment moyen par jour) plutôt qu'un rattachement article par article à un vol précis. **Point d'attention pour le ML** : sans horaire programmé dans ces sources, la cible « retard » au sens Kaggle / 261/2004 n'est pas calculable (Rendu 3 § 8).
-  - Colonnes déjà exclues lors du nettoyage démontré dans les notebooks : `sensors` (OpenSky, vide à 100 %), le champ `weather` brut d'OpenWeather (remplacé par `description_ciel`), et `content` de NewsAPI (tronqué, non exploitable comme texte). Le script générique de la Phase 2 reprendra ces mêmes exclusions de façon automatisée sur l'ensemble des captures.
-  - La répartition par langue très déséquilibrée observée sur NewsAPI (dominée par l'anglais) devra être prise en compte lors du choix du modèle BERT d'analyse de sentiment (Rendu 3), sans que ce choix soit arrêté à ce stade du projet.
+**Dispositif** : Un rapport `ydata-profiling` par source, généré depuis les notebooks d'exploration et enregistré dans `data/profiling_reports/` (`opensky_profiling_report.html`, `openweather_profiling_report.html`, `newsapi_profiling_report.html`) : distributions, complétude, valeurs distinctes, corrélations. En complément, des figures ciblées dans les notebooks : complétude par colonne ; nuage géographique et pays d'origine (OpenSky) ; température et vent par aéroport (OpenWeather) ; langue de requête (NewsAPI). Les volumes et les extrêmes OpenSky varient d'une capture à l'autre ; les *types* d'anomalies, eux, restent stables.
+
+**Constats supplémentaires** :
+
+- **OpenSky** : quelques altitudes barométriques légèrement négatives d'une capture à l'autre (sol sous le niveau de la mer, ou artefact ADS-B). Aucun doublon sur `icao24` : chaque appel `/states/all` est un instantané, une ligne par avion.
+- **OpenWeather** : pas de valeur hors bornes sur température, humidité, pression, vent et visibilité. `main.temp`, `main.feels_like` et l'encadrement min/max sont cohérents ; sur certains aéroports les trois valeurs sont égales : l'encadrement est alors inexploitable comme feature à lui seul.
+- **NewsAPI** : `publishedAt` est en UTC ; le tampon de collecte était en heure locale naïve (bug corrigé dans le module d'ingestion, biais d'environ 2 h sur l'âge des articles, impact limité vu un âge moyen d'environ 6,8 jours).
 
 ---
 
+## 5. Conclusions pour la future organisation et modélisation des données
 
+Cette première phase fixe le contrat des trois APIs: elles n'ont pas le même grain : un avion à un instant (OpenSky), un aéroport à une capture (OpenWeather), un article (NewsAPI).
 
-## 5. Modalités d'évaluation (rappel officiel)
+La jointure utile est donc le couple (aéroport, date/heure) dans le schéma en étoile, après agrégation des actualités par jour, sans inventer une clé article–vol. C'est l'objet du Rendu 2.
 
-> *"Mise en situation professionnelle reconstituée : à partir de sources de données réelles (API, web scraping, bases existantes…), le/la candidat(e) devra identifier, collecter et préparer les données pour qu'elles soient exploitables dans un pipeline de données."*
+Les colonnes exclues et le script `data_cleaning.py` sont déjà décrits dans le nettoyage ci-dessus. La cible « retard vs horaire » n'est pas calculable avec ces APIs : c'est cadré dans l'introduction ; le Rendu 3 en tire la conséquence pour le modèle.
 
-Ce rendu démontre la capacité à identifier des sources pertinentes, à les collecter de façon automatisée et à préparer leur exploitation future (Rendu 2).
+---
