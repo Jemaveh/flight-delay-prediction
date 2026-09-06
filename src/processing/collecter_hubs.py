@@ -28,7 +28,6 @@ ENDPOINTS_VOLS = ("departure", "arrival")
 DOSSIER_RAW_DEFAUT = RACINE_PROJET / "data" / "raw"
 ATTENTE_429_DEFAUT_SECONDES = 60.0
 NB_REESSAIS_429 = 1
-# Hubs encore absents après la salve du 26/08 après-midi (429 sur LTFM).
 HUBS_PRIORITAIRES = ("LTFM", "EIDW", "EDDM", "LEBL")
 
 

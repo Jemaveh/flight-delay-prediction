@@ -15,7 +15,6 @@ import pandas as pd
 from src.ingestion.openweather_client import HUBS_AEROPORTUAIRES
 from src.processing.data_cleaning import _sans_accents, normaliser_titre
 
-# Alias assez spécifiques : pas « paris » / « london » seuls (trop de bruit).
 ALIAS_HUB: dict[str, tuple[str, ...]] = {
     "LFPG": ("cdg", "lfpg", "charles de gaulle", "charles-de-gaulle", "roissy"),
     "EGLL": ("lhr", "egll", "heathrow"),

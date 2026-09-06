@@ -260,7 +260,7 @@ def aplatir_actualites(donnees: dict) -> pd.DataFrame:
 
 def nettoyer_actualites(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
     """
-    Exclut le contenu tronqué (déjà absent après aplatir) et déduplique sur
+    Exclut le contenu tronqué et déduplique sur
     l'URL puis sur le titre normalisé.
     """
     lues = len(df)
