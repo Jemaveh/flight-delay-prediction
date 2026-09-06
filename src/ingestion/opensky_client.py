@@ -179,7 +179,7 @@ class OpenSkyClient:
     def __init__(self) -> None:
         """
         Initialise le module d'ingestion : URL de base et identifiants OAuth
-        API Client (s'ils sont disponibles). Le compte feeder n'est pas utilisé.
+        API Client (s'ils sont disponibles).
         """
         self._logger = get_logger(__name__)
         self._url_base = URL_BASE_OPENSKY
@@ -406,8 +406,7 @@ class OpenSkyClient:
         ----------
         bbox : tuple[float, float, float, float] | None
             Bounding box géographique optionnelle sous la forme
-            (lamin, lomin, lamax, lomax), c'est-à-dire (latitude minimale,
-            longitude minimale, latitude maximale, longitude maximale). Si
+            (lamin, lomin, lamax, lomax). Si
             None, l'API retourne l'état de tous les aéronefs suivis dans le
             monde, ce qui représente un volume de données beaucoup plus
             important.
@@ -444,10 +443,6 @@ class OpenSkyClient:
         """
         Interroge un endpoint /flights/{departure,arrival} de l'API OpenSky
         Network et retourne la liste des vols correspondants.
-
-        Cette méthode privée factorise la logique commune aux méthodes
-        publiques `recuperer_vols_depart` et `recuperer_vols_arrivee`, qui ne
-        diffèrent que par le endpoint interrogé.
 
         Parameters
         ----------
@@ -490,7 +485,6 @@ class OpenSkyClient:
             )
 
         url = f"{self._url_base}/flights/{endpoint}"
-        # Le paramètre HTTP attendu par l'API s'appelle "end", pas "fin"
         parametres = {
             "airport": icao_aeroport,
             "begin": debut,

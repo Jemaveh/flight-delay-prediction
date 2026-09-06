@@ -13,8 +13,8 @@ lieu que l'on souhaite documenter.
 Pour ce projet, on s'intéresse à la météo au niveau des principaux hubs
 aériens européens plutôt qu'à une zone géographique continue : la météo
 pertinente pour la prédiction de retard est celle des aéroports de
-départ/arrivée, pas celle d'un point quelconque entre deux aéroports. On
-définit donc une liste fixe de hubs (constante HUBS_AEROPORTUAIRES), et le
+départ/arrivée.
+On définit donc une liste fixe de hubs (constante HUBS_AEROPORTUAIRES), et le
 module boucle sur cette liste pour construire un jeu de données multi-
 aéroports en plusieurs appels API.
 

@@ -394,8 +394,7 @@ class NewsApiClient:
         Parameters
         ----------
         donnees : dict
-            Le contenu JSON à sauvegarder (typiquement le résultat de
-            `recuperer_actualites_aeroportuaires`).
+            Le contenu JSON à sauvegarder.
         dossier : str
             Le dossier de destination. Créé automatiquement s'il n'existe pas.
 
