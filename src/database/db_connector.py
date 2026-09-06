@@ -63,7 +63,7 @@ def creer_engine() -> Engine:
 
 def executer_schema(engine: Engine | None = None) -> None:
     """
-    Exécute src/database/schema.sql sur l'engine donné (ou un engine neuf).
+    Exécute src/database/schema.sql sur l'engine donné.
     """
     moteur = engine if engine is not None else creer_engine()
     sql = CHEMIN_SCHEMA.read_text(encoding="utf-8")

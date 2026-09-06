@@ -4,16 +4,10 @@ Module de configuration centralisée du projet "Airlines Delay Prediction".
 Ligne de raisonnement
 ----------------------
 Un pipeline de données manipule des informations sensibles (clés d'API, mots de
-passe, chaînes de connexion à une base de données). Écrire ces valeurs "en dur"
-dans le code source serait une faute professionnelle grave :
-    - Elles se retrouveraient versionnées dans Git (donc visibles par quiconque
-      a accès au dépôt, y compris sur un dépôt public).
-    - Il faudrait modifier le code source à chaque changement de clé (ex :
-      renouvellement d'un abonnement API), ce qui est risqué en production.
+passe, chaînes de connexion à une base de données).
 
-La solution standard en Data Engineering consiste à charger ces valeurs depuis
-des VARIABLES D'ENVIRONNEMENT, elles-mêmes définies dans un fichier local
-".env" qui n'est JAMAIS commité (voir la règle correspondante dans .gitignore).
+Chargement de ces valeurs depuis des VARIABLES D'ENVIRONNEMENT, elles-mêmes définies
+dans un fichier local ".env" qui n'est JAMAIS commité.
 
 La configuration est chargée depuis les variables d'environnement via
 pydantic-settings, qui valide et type chaque paramètre au démarrage.
@@ -37,19 +31,19 @@ class Settings(BaseSettings):
 
     Note sur la correspondance des noms (case_sensitive=False) :
         Par convention Python (PEP8), les attributs de classe sont écrits en
-        "snake_case" minuscule (ex : opensky_username). Les variables
-        d'environnement, elles, suivent la convention shell classique en
-        MAJUSCULES (ex : OPENSKY_USERNAME). Avec `case_sensitive=False`
-        (comportement activé explicitement ci-dessous), pydantic-settings fait
-        automatiquement la correspondance entre "opensky_username" et
-        "OPENSKY_USERNAME" : aucun mapping manuel n'est nécessaire.
+        "snake_case" minuscule (ex : opensky_username).
+        Les variables d'environnement suivent la convention shell classique en
+        MAJUSCULES (ex : OPENSKY_USERNAME).
+        Avec `case_sensitive=False`(comportement activé explicitement ci-dessous),
+        pydantic-settings fait automatiquement la correspondance entre
+        "opensky_username" et "OPENSKY_USERNAME".
     """
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        extra="ignore",  # on ignore les variables d'environnement non déclarées ici
+        extra="ignore",  # ignore les variables d'environnement non déclarées ici
     )
 
     # --- OpenSky Network (données de vols) ---
