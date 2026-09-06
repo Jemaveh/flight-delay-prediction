@@ -1,11 +1,11 @@
 # Expérience Open-Meteo + proxy de retard — questions, protocole, résultats
 
-> **Date** : 02/09/2026, après les expériences BERT et hub.  
+ 
 > **Code** : `src/ingestion/openmeteo_client.py`, `src/processing/meteo_archive.py`, `src/models/experience_proxy_retard.py`.  
 > **CLI** : `python -m src.models.experience_proxy_retard` (collecte) puis `--sans-collecte` (rejeu).  
 > **N'écrase pas** `models/modele_vol_meteo.joblib`. OpenWeather *Current* reste la source du pipeline prod.
 
-Ce fichier documente le protocole, les chiffres et la décision. Open-Meteo n'est pas une source d'horaire.
+Ce fichier documente le protocole, les chiffres et la décision.
 
 ---
 
@@ -84,10 +84,8 @@ Un vol OpenSky est presque toujours **proche de la médiane de sa route**. Le «
 
 ## 5. Décision
 
-| Je fais | Je ne fais pas |
-| --- | --- |
-| Conserver le code d'expérience et ce récapitulatif (Rendu 3) | Remplacer OpenWeather ou le joblib |
-| Indiquer que la météo d'archive **a été testée** | Présenter LightGBM comme un prédicteur de retard |
-| Rappeler que BTS n'est pas une API à brancher sur l'étoile | Verser un CSV US dans `fact_flights` |
+**Pourquoi je ne le garde pas.** La couverture passe à ~62 % (contre ~22 % avec OpenWeather *Current*), mais le modèle ne devient pas utile : sur la durée, +0,5 min de RMSE et pire en MAE ; sur le proxy (écart à la route), LightGBM perd ; une classe « > 15 min » n'a presque aucun positif. **Donc le trou n'était pas la météo. C'est l'absence d'horaire**.
 
-**Synthèse.** Open-Meteo recouvre 62 % des vols, contre 22 % avec Current. Sur la durée, LightGBM gagne 0,5 min de RMSE et perd en MAE. Sur l'écart à la médiane de route, il perd. Une classe 15 min n'a presque aucun positif. Le trou n'était pas la météo : c'est l'absence d'horaire.
+OpenWeather *Current* reste la source du pipeline. Je ne touche pas au joblib ni à l'API.
+
+Ces chiffres sont ceux du **02/09**. Le Rendu 3 (campagne du 04/09) est le livrable de référence.
