@@ -1,9 +1,9 @@
 """
 DAG quotidien : collecte OpenSky/OpenWeather, ETL PostgreSQL, entraînement.
 
-NewsAPI n'est pas appelée. Le DAG est créé en pause (déclenchement manuel
-ou activation explicite) pour ne pas consommer le quota OpenSky au premier
-démarrage d'Airflow.
+NewsAPI n'est pas appelée. Le DAG est créé en pause pour le moment
+(déclenchement manuel ou activation explicite) pour ne pas consommer
+le quota OpenSky au premier démarrage d'Airflow.
 """
 
 from __future__ import annotations
