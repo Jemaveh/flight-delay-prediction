@@ -1,9 +1,6 @@
 """
 Module de logging centralisé du projet "Airlines Delay Prediction".
 
-Le suivi d'exécution passe par le module `logging` de la bibliothèque
-standard, qui apporte les niveaux de gravité, l'horodatage, le module
-émetteur et l'écriture dans un fichier persistant.
 """
 
 from __future__ import annotations
@@ -15,7 +12,7 @@ from config.settings import settings
 
 # Dossier de destination des fichiers de logs. On le crée automatiquement s'il
 # n'existe pas encore, pour que le projet fonctionne "out of the box" après un
-# `git clone`, sans étape d'installation manuelle supplémentaire.
+# `git clone`.
 DOSSIER_LOGS = Path("logs")
 DOSSIER_LOGS.mkdir(parents=True, exist_ok=True)
 
@@ -70,8 +67,8 @@ def get_logger(nom_module: str) -> logging.Logger:
     logger.addHandler(handler_fichier)
 
     # On empêche la propagation vers le logger racine de Python pour éviter,
-    # là encore, un double affichage si le logger racine venait à être
-    # configuré ailleurs dans le projet (ex : par une librairie tierce).
+    # un double affichage si le logger racine venait à être configuré
+    # ailleurs dans le projet (ex : par une librairie tierce).
     logger.propagate = False
 
     return logger

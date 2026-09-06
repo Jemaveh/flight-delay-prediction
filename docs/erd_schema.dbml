@@ -51,7 +51,7 @@ Table dim_weather {
 
 Table dim_news_sentiment {
   sentiment_id integer [pk, increment]
-  date_id integer [not null, unique, note: 'une ligne par jour ; score_sentiment NULL tant que BERT n a pas tourné']
+  date_id integer [not null, unique, note: 'une ligne par jour ; score_sentiment NULL tant que scorer_sentiment n a pas tourne']
   nb_articles integer [not null]
   mots_cles text
   score_sentiment double

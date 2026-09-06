@@ -76,7 +76,7 @@ erDiagram
         INTEGER date_id FK "UNIQUE"
         INTEGER nb_articles
         TEXT mots_cles
-        DOUBLE score_sentiment "NULL tant que BERT n a pas tourne"
+        DOUBLE score_sentiment "NULL tant que scorer_sentiment n a pas tourne"
     }
 
     fact_flights {
