@@ -2,6 +2,7 @@
 .env
 credentials.json
 **/credentials.json
+*.pem
 
 # === Documents personnels (jamais partagés, jamais versionnés) ===
 docs/journal_de_bord.md
