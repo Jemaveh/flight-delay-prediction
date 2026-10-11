@@ -11,6 +11,11 @@ docs/notes_personnelles_jury.md
 docs/script_soutenance.md
 docs/soutenance/
 
+# === Dossier jury généré (PDF / HTML / script de build) ===
+docs/_build_dossier_pdf.py
+docs/dossier_projet_*.pdf
+docs/dossier_projet_*.html
+
 # === Python ===
 __pycache__/
 *.pyc
