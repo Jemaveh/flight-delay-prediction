@@ -11,7 +11,7 @@
 | --- | --- |
 | **Rendu 1** | Trois APIs, cadrage IN/OUT, personas, KPI, veille, SWOT. Aucun horaire programmé → pas de retard « réel − prévu ». |
 | **Rendu 2** | Étoile PostgreSQL, ETL incrémental. `retard_minutes` = proxy, pas un slot. Au 04/09 : **21 054** vols, **120** météos, **27** jours d'actu, **3 664** lignes modèle (~17 %). |
-| **Rendu 3** | Cible retenue = **option B** (régression de la durée observée, pas un retard). LightGBM **54,02** vs médiane **44,07**. BERT et Open-Meteo testés. Un vrai retard aurait demandé un CSV US ou une 4e source d'horaires : non livré. |
+| **Rendu 3** | Cible retenue = **option B** (régression de la durée observée, pas un retard). LightGBM **54,02** vs médiane **44,07**. BERT et Open-Meteo testés. |
 
 ---
 
@@ -22,12 +22,12 @@
 - **Rejeu** : `README.md` (install, `.env.example`, commandes).
 - **Pilotage** : projet solo ; suivi = journal de bord, Notion et Git. Feuille de route = table des phases du README. KPI / SWOT : Rendu 1.
 
-| Livré | Pas livré |
-| --- | --- |
-| FastAPI `/health`, `/predict`, `/metrics`, `/docs` (joblib) | Routes SQL métier, `5432` dans Compose |
-| Grafana = scrape de l'API | Carte d'avions, MLflow, drift, k8s |
-| CI GitHub Actions `pytest` | Jenkins, blue-green |
-| Airflow SequentialExecutor, DAG **en pause** | Trigger = collecte réelle sur le PC 8 Go |
+**Livrables techniques**
+
+- FastAPI : `/health`, `/predict`, `/metrics`, `/docs` (`joblib`)
+- Grafana : scrape de l'API
+- CI GitHub Actions : `pytest`
+- Airflow SequentialExecutor, DAG **en pause**
 
 ---
 
@@ -135,11 +135,11 @@ L'orchestration (horloge, graphe, pourquoi un Trigger échoue aujourd'hui, comme
 
 **Difficultés.** Titre « retard » vs contrat des APIs ; quota OpenSky ; météo *current* ± 3 h ; RAM (8 Go / 3,7 Go) ; LightGBM sous la médiane.
 
-**Verrous.** Pas d'heure prévue sans 4e source ; image officielle Airflow sans `src/` ; OOM Gunicorn sur la VM.
+**Verrous.** Pas d'heure prévue dans les trois APIs ; image officielle Airflow sans `src/` ; OOM Gunicorn sur la VM.
 
 **Livré.** Pipeline Europe reproductible, API de durée observée, CI, monitoring du service, DAG quotidien en pause.
 
-**Ensuite.** Appliquer la partie 3.4 sur un hôte dédié. 4e source d'horaires = **projet distinct** (en plus d'OpenSky).
+**Ensuite.** Appliquer la partie 3.4 sur un hôte dédié.
 
 ---
 

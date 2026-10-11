@@ -108,8 +108,7 @@ Référence : CLI du **04/09/2026 11:29**.
 | Chemin | Quoi changer | Retard  ? | Pipeline Europe + APIs live ? |
 | --- | --- | --- | --- |
 | **1. CSV BTS / Kaggle** | Remplacer OpenSky | Oui (vols US, souvent classe ≥ 15 min) | **Non** |
-| **2. 4e source d'horaires** | Joindre un slot publié | Oui, si la jointure tient | **Oui** — seul chemin « Europe + retard » |
-| **3. Changer la question** | Option B (durée observée) ou option C (écart à la route) | Non | **Oui** — livré : option B |
+| **2. Changer la question** | Option B (durée observée) ou option C (écart à la route) | Non | **Oui** — livré : option B |
 
 
 Testé **sans quitter l'option B** : météo d'archive (couverture en hausse ; l'option C reste perdue) ; flags / hub / BERT sur les news (ne bat pas une médiane horaire).

@@ -57,7 +57,6 @@ Ce sous-ensemble tient lieu de cahier des charges **non exhaustif** : périmètr
 
 - Retard « réel − prévu » : aucune des trois APIs n'expose l'horaire programmé. Donc impossible de calculer le retard passager (heure d’arrivée réelle - heure annoncée sur le billet).
 - Tableau de bord cartographique des avions en direct.
-- Quatrième source d'horaires payante.
 - Entretiens utilisateurs, Experience Map terrain, MLflow, mesure de *data drift*, Kubernetes.
 
 **Personas** :
@@ -88,12 +87,12 @@ Type de données : carte, flotte mondiale, souvent des horaires commerciaux. Il 
 Pour contourner cela il faudrait faire du **scraping**.
 OpenSky est un choix rapide et fiable : ADS-B public, documenté, scriptable — mais au prix de l'horaire manquant (la documentation OpenSky l'indique : pas d'horaires ni de retards commerciaux).
 
-**FlightAware (AeroAPI)** : Un palier *Personal* existe (crédit mensuel limité, carte bancaire, facturation à la requête) et peut exposer des horaires (`scheduled_*`). Ce serait une **quatrième source**, pas un substitut à OpenSky : jointure indicatif ADS-B ↔ numéro commercial, mais hors du budget retenu pour ce projet.
+**FlightAware (AeroAPI)** : API payante, hors du cadrage retenu (trois APIs publiques). Non utilisée.
 
 **CSV Kaggle / BTS (US DOT)** :
 Il a déjà l'horaire et le retard (`DEP_DELAY`). L'utiliser *à la place* d'OpenSky fait un bon exercice ML (souvent une classe ≥ 15 min) et mais rien d'interressant d'un point de vue Data Engineer : plus d'API live, plus d'Europe, plus de quotas à gérer. Le **mélanger** dans `fact_flights` n'ajoute aucune heure prévue aux vols européens et casse l'étoile (voir Rendu 3).
 
-**Réglementation.** Le règlement (CE) n° 261/2004 définit le retard indemnizable comme un écart à l'heure d'arrivée *prévue* : sans quatrième source, cette promesse n'est pas tenable. Le RGPD ne bloque pas le projet (pas de PII passager) mais interdit d'inventer un couplage passager–vol. Les quotas (OpenSky 4000 crédits / jour, NewsAPI 100 requêtes / jour) calent le rythme de collecte autant qu'un texte de loi.
+**Réglementation.** Le règlement (CE) n° 261/2004 définit le retard indemnizable comme un écart à l'heure d'arrivée *prévue* : les trois APIs du projet n'exposent pas cette heure, donc cette promesse n'est pas tenable. Le RGPD ne bloque pas le projet (pas de PII passager) mais interdit d'inventer un couplage passager–vol. Les quotas (OpenSky 4000 crédits / jour, NewsAPI 100 requêtes / jour) calent le rythme de collecte autant qu'un texte de loi.
 En résumé : Flightradar et Kaggle ont été écartés pour garder un pipeline Europe, public, reproductible. Le pivot (durée observée plutôt qu'un retard affiché) est la conséquence de ce choix.
 
 ### 1.5 Analyse SWOT
@@ -102,7 +101,7 @@ En résumé : Flightradar et Kaggle ont été écartés pour garder un pipeline 
 |---|---|
 | **Forces** | Trois APIs publiques documentées ; pipeline reproductible (ingestion, JSON, plus tard étoile) ; RGPD simple (pas de PII). |
 | **Faiblesses** | Pas d'heure prévue ; grains incompatibles (vol / point météo / jour d'actu) ; quotas ; PC personnel limité à 8 Go. |
-| **Opportunités** | Sur ce pipeline : météo d’archive (Open-Meteo, déjà testée en Phase 3) pour mieux recouvrir les 24 h de vols ; machine plus dimensionnée pour qu’Airflow exécute vraiment la collecte. Un vrai retard exigerait une API d’horaires en plus des trois sources actuelles : ce serait un nouveau projet.
+| **Opportunités** | Sur ce pipeline : météo d’archive (Open-Meteo, déjà testée en Phase 3) pour mieux recouvrir les 24 h de vols ; machine plus dimensionnée pour qu’Airflow exécute vraiment la collecte. |
 | **Menaces** | HTTP 429 / épuisement du seau OpenSky|
 
 ---
